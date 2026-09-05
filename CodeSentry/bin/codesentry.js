@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+require('dotenv').config();
 const { createCommandParser, COMMANDS } = require('../src/cli/commands');
 const { createOutputHandler, OUTPUT_MODES } = require('../src/cli/output');
 const { createProgressTracker, PROGRESS_STATES } = require('../src/cli/progress');
@@ -64,6 +65,14 @@ async function main() {
       
       if (parsed.options.category) {
         scanOptions.categoryFilter = parsed.options.category.toLowerCase();
+      }
+      
+      if (parsed.options.ai) {
+        scanOptions.aiEnabled = true;
+      }
+      
+      if (parsed.options.aiModel) {
+        scanOptions.aiModel = parsed.options.aiModel;
       }
       
       const result = await scan(parsed.projectPath, scanOptions);

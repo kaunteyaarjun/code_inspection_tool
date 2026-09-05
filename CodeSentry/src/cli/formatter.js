@@ -91,23 +91,26 @@ class ScanResultFormatter {
         lines.push(`  ${finding.suggestedFix}`);
       }
       
-      if (finding.ai) {
+      if (finding.aiAnalysis) {
         lines.push('');
         lines.push('AI Analysis:');
-        if (finding.ai.confidence) {
-          lines.push(`  Confidence: ${Math.round(finding.ai.confidence * 100)}%`);
+        if (finding.aiAnalysis.model) {
+          lines.push(`  Model: ${finding.aiAnalysis.model}`);
         }
-        if (finding.ai.falsePositiveProbability) {
-          lines.push(`  False-positive probability: ${Math.round(finding.ai.falsePositiveProbability * 100)}%`);
+        if (finding.aiAnalysis.confidence) {
+          lines.push(`  Confidence: ${Math.round(finding.aiAnalysis.confidence * 100)}%`);
         }
-        if (finding.ai.explanation) {
-          lines.push(`  Explanation: ${finding.ai.explanation}`);
+        if (finding.aiAnalysis.falsePositiveProbability) {
+          lines.push(`  False-positive probability: ${Math.round(finding.aiAnalysis.falsePositiveProbability * 100)}%`);
         }
-        if (finding.ai.impact) {
-          lines.push(`  Impact: ${finding.ai.impact}`);
+        if (finding.aiAnalysis.explanation) {
+          lines.push(`  Explanation: ${finding.aiAnalysis.explanation}`);
         }
-        if (finding.ai.suggestedFix) {
-          lines.push(`  Recommended fix: ${finding.ai.suggestedFix}`);
+        if (finding.aiAnalysis.impact) {
+          lines.push(`  Impact: ${finding.aiAnalysis.impact}`);
+        }
+        if (finding.aiAnalysis.suggestedFix) {
+          lines.push(`  Recommended fix: ${finding.aiAnalysis.suggestedFix}`);
         }
       }
     }

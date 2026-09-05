@@ -8,57 +8,32 @@ class PromptGenerator {
   generateFindingAnalysisPrompt(finding, sourceContext = null, fileContext = null) {
     const parts = [];
     
-    parts.push('Analyze the following code finding and provide a security/quality assessment:');
+    parts.push('You are a code analysis tool. Analyze this finding and respond ONLY with a JSON object.');
+    parts.push('Do not include any explanation before or after the JSON. Just the raw JSON object.');
     parts.push('');
     
     if (this.includeMetadata) {
-      parts.push('Finding Metadata:');
+      parts.push('Finding:');
       parts.push(`- Category: ${finding.category}`);
       parts.push(`- Severity: ${finding.severity}`);
       parts.push(`- File: ${finding.file}`);
       if (finding.line) parts.push(`- Line: ${finding.line}`);
       if (finding.rule) parts.push(`- Rule: ${finding.rule}`);
-      parts.push(`- Tool: ${finding.tool}`);
       parts.push(`- Message: ${finding.message}`);
       if (finding.suggestedFix) parts.push(`- Suggested Fix: ${finding.suggestedFix}`);
       parts.push('');
     }
     
     if (sourceContext && this.includeSource) {
-      parts.push('Relevant Source Code:');
+      parts.push('Source code:');
       parts.push('```');
       parts.push(sourceContext);
       parts.push('```');
       parts.push('');
     }
     
-    if (fileContext) {
-      parts.push('File Context:');
-      parts.push('```');
-      parts.push(fileContext);
-      parts.push('```');
-      parts.push('');
-    }
-    
-    parts.push('Please provide:');
-    parts.push('1. A detailed explanation of the issue');
-    parts.push('2. Severity assessment (HIGH, MEDIUM, LOW)');
-    parts.push('3. Confidence level (0.0 to 1.0)');
-    parts.push('4. False positive probability (0.0 to 1.0)');
-    parts.push('5. Potential impact');
-    parts.push('6. Recommended fix');
-    parts.push('');
-    parts.push('Respond in JSON format:');
-    parts.push('```json');
-    parts.push('{');
-    parts.push('  "explanation": "...",');
-    parts.push('  "severity": "HIGH|MEDIUM|LOW",');
-    parts.push('  "confidence": 0.0-1.0,');
-    parts.push('  "falsePositiveProbability": 0.0-1.0,');
-    parts.push('  "impact": "...",');
-    parts.push('  "suggestedFix": "..."');
-    parts.push('}');
-    parts.push('```');
+    parts.push('Respond with this exact JSON structure:');
+    parts.push('{"explanation":"brief explanation","severity":"HIGH|MEDIUM|LOW","confidence":0.8,"falsePositiveProbability":0.1,"impact":"brief impact","suggestedFix":"brief fix"}');
     
     return parts.join('\n');
   }

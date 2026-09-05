@@ -1,4 +1,5 @@
 const path = require('node:path');
+const fs = require('node:fs');
 const { createConfig } = require('./config');
 const { normalize, registerNormalizer } = require('../findings/normalize');
 const { deduplicate } = require('../findings/dedupe');
@@ -9,6 +10,8 @@ const { SEVERITIES } = require('../findings/schema');
 const { discover: realDiscover } = require('../discovery/discover');
 const { runStaticAnalyzers } = require('../analyzers/static');
 const { runCustomAnalyzers } = require('../analyzers/custom');
+const { createAIClient } = require('../analyzers/ai/client');
+const { createPromptGenerator } = require('../analyzers/ai/prompt');
 
 registerNormalizer('codesentry', normalizeCodesentry);
 
@@ -92,6 +95,14 @@ async function scan(projectPath, overrides = {}) {
     filteredFindings = filteredFindings.filter(f => f.category === config.categoryFilter);
   }
 
+  if (config.aiEnabled && filteredFindings.length > 0) {
+    try {
+      filteredFindings = await analyzeWithAI(filteredFindings, discoveryResult, config);
+    } catch (err) {
+      errors.push({ stage: 'ai-analysis', message: err.message });
+    }
+  }
+
   const aggregationResult = aggregate(filteredFindings);
   const scoreResult = score(aggregationResult);
   const verdictResult = verdict(scoreResult);
@@ -129,6 +140,66 @@ function collectWarnings(staticResults, customResult) {
     warnings.push({ tool: 'codesentry', warning: customResult.warning });
   }
   return warnings;
+}
+
+async function analyzeWithAI(findings, discoveryResult, config) {
+  const client = createAIClient({
+    provider: config.aiProvider,
+    model: config.aiModel,
+    scanContext: {
+      files: discoveryResult.files,
+      languages: discoveryResult.languages,
+    },
+  });
+
+  const promptGenerator = createPromptGenerator();
+  const analyzedFindings = [];
+
+  const maxFindings = parseInt(process.env.AI_MAX_FINDINGS || '10', 10);
+  const findingsToAnalyze = findings.slice(0, maxFindings);
+
+  for (const finding of findingsToAnalyze) {
+    try {
+      const sourceContext = getSourceContext(finding, discoveryResult);
+      const prompt = promptGenerator.generateFindingAnalysisPrompt(finding, sourceContext);
+      const aiResult = await client.analyze(prompt);
+
+      analyzedFindings.push({
+        ...finding,
+        aiAnalysis: {
+          explanation: aiResult.explanation,
+          confidence: aiResult.confidence,
+          falsePositiveProbability: aiResult.falsePositiveProbability,
+          impact: aiResult.impact,
+          suggestedFix: aiResult.suggestedFix,
+          model: client.model,
+        },
+      });
+    } catch (err) {
+      analyzedFindings.push(finding);
+    }
+  }
+
+  const remaining = findings.slice(maxFindings);
+  return [...analyzedFindings, ...remaining];
+}
+
+function getSourceContext(finding, discoveryResult) {
+  if (!finding.file || !discoveryResult.fileMap) return null;
+
+  const filePath = finding.file;
+  const fullPath = discoveryResult.fileMap[filePath];
+  if (!fullPath) return null;
+
+  try {
+    const content = fs.readFileSync(fullPath, 'utf-8');
+    const lines = content.split('\n');
+    const start = Math.max(0, (finding.line || 1) - 11);
+    const end = Math.min(lines.length, (finding.line || 1) + 10);
+    return lines.slice(start, end).join('\n');
+  } catch {
+    return null;
+  }
 }
 
 module.exports = {

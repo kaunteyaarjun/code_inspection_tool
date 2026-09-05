@@ -9,6 +9,8 @@ const OPTIONS = {
   VERBOSE: '--verbose',
   SEVERITY: '--severity',
   CATEGORY: '--category',
+  AI: '--ai',
+  AI_MODEL: '--ai-model',
   HELP: '--help',
   VERSION: '--version',
 };
@@ -80,6 +82,17 @@ class CommandParser {
           result.errors.push('Missing value for --category');
           i++;
         }
+      } else if (arg === OPTIONS.AI) {
+        result.options.ai = true;
+        i++;
+      } else if (arg === OPTIONS.AI_MODEL) {
+        if (i + 1 < args.length) {
+          result.options.aiModel = args[i + 1];
+          i += 2;
+        } else {
+          result.errors.push('Missing value for --ai-model');
+          i++;
+        }
       } else if (!arg.startsWith('-') && !result.projectPath) {
         result.projectPath = arg;
         i++;
@@ -140,6 +153,8 @@ Options:
   --verbose       Show detailed progress information
   --severity <level>  Filter by severity (BLOCKER, HIGH, MEDIUM, LOW, INFO)
   --category <cat>    Filter by category (security, bugs, efficiency, resources)
+  --ai            Enable AI-powered analysis (auto-selects model based on codebase)
+  --ai-model <model>  Force a specific AI model (e.g., nvidia/nemotron-3-super-120b-a12b:free)
   --help, -h      Show this help message
   --version       Show version
 
@@ -148,6 +163,8 @@ Examples:
   codesentry scan ./my-project --json
   codesentry scan ./my-project --severity high
   codesentry scan ./my-project --category security
+  codesentry scan ./my-project --ai
+  codesentry scan ./my-project --ai --ai-model nvidia/nemotron-3-ultra-550b-a55b:free
   codesentry version
 `;
   }
