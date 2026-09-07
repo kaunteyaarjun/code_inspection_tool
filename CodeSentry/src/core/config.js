@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const DEFAULTS = {
   projectPath: process.cwd(),
   enabledAnalyzers: ['eslint', 'typescript', 'ruff', 'bandit', 'semgrep'],
-  aiEnabled: false,
+  aiEnabled: true,
   aiProvider: process.env.AI_PROVIDER || 'openrouter',
   aiModel: null,
   aiApiKey: null,

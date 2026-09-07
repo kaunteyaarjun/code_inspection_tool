@@ -97,19 +97,18 @@ class OutputHandler {
     const { width = 40, title } = options;
     const lines = Array.isArray(content) ? content : content.split('\n');
     
-    const top = `╔${'═'.repeat(width)}╗`;
-    const bottom = `╚${'═'.repeat(width)}╝`;
-    
-    this.print(top);
+    const top = `╭${'─'.repeat(width)}╮`;
+    const bottom = `╰${'─'.repeat(width)}╯`;
     
     if (title) {
-      const titleLine = `║${title.padStart((width + title.length) / 2).padEnd(width)}║`;
+      const titleLine = `╭─ ${title} ${'─'.repeat(Math.max(0, width - title.length - 4))}╮`;
       this.print(titleLine);
-      this.print(`║${'═'.repeat(width)}║`);
+    } else {
+      this.print(top);
     }
     
     for (const line of lines) {
-      const contentLine = `║${line.padEnd(width)}║`;
+      const contentLine = `│ ${line.padEnd(width - 2)} │`;
       this.print(contentLine);
     }
     
@@ -118,7 +117,7 @@ class OutputHandler {
 
   printSeparator() {
     if (this.mode === OUTPUT_MODES.JSON) return;
-    this.print('─'.repeat(50));
+    this.print('─'.repeat(76));
   }
 }
 

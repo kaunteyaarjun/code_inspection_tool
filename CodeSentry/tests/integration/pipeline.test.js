@@ -170,12 +170,12 @@ describe('Pipeline Integration', () => {
   });
 
   describe('AI Integration', () => {
-    it('should work with mock AI client', async () => {
-      const { createAnthropicClient } = require('../../src/analyzers/ai/anthropic');
+    it('should work with mock OpenRouter AI client and default factory', async () => {
+      const { createAIClient } = require('../../src/analyzers/ai/client');
       const { createPromptGenerator } = require('../../src/analyzers/ai/prompt');
       const { createAIResponseParser } = require('../../src/analyzers/ai/parser');
 
-      const client = createAnthropicClient({ mockMode: true });
+      const client = createAIClient({ mockMode: true });
       const promptGen = createPromptGenerator();
       const parser = createAIResponseParser();
 
@@ -194,6 +194,36 @@ describe('Pipeline Integration', () => {
 
       assert.ok(parsed.explanation);
       assert.ok(parsed.severity);
+      assert.ok(typeof parsed.confidence === 'number');
+      assert.ok(typeof parsed.falsePositiveProbability === 'number');
+      assert.ok(parsed.impact);
+      assert.ok(parsed.suggestedFix);
+    });
+
+    it('should work with mock OpenRouter AI client and default factory', async () => {
+      const { createAIClient } = require('../../src/analyzers/ai/client');
+      const { createPromptGenerator } = require('../../src/analyzers/ai/prompt');
+      const { createAIResponseParser } = require('../../src/analyzers/ai/parser');
+
+      const client = createAIClient({ mockMode: true });
+      const promptGen = createPromptGenerator();
+      const parser = createAIResponseParser();
+
+      const finding = createFinding({
+        tool: 'codesentry',
+        category: 'security',
+        file: 'src/app.js',
+        message: 'eval() code injection vulnerability',
+        line: 12,
+        severity: 'HIGH',
+      });
+
+      const prompt = promptGen.generateFindingAnalysisPrompt(finding, 'eval(userInput);');
+      const response = await client.analyze(prompt);
+      const parsed = parser.parse(response);
+
+      assert.ok(parsed.explanation);
+      assert.equal(parsed.severity, 'HIGH');
       assert.ok(typeof parsed.confidence === 'number');
       assert.ok(typeof parsed.falsePositiveProbability === 'number');
       assert.ok(parsed.impact);
@@ -281,9 +311,9 @@ describe('Pipeline Integration', () => {
     });
 
     it('should handle AI failures gracefully', async () => {
-      const { createAnthropicClient } = require('../../src/analyzers/ai/anthropic');
+      const { createOpenRouterClient } = require('../../src/analyzers/ai/openrouter');
 
-      const client = createAnthropicClient({ mockMode: true });
+      const client = createOpenRouterClient({ mockMode: true });
 
       const response = await client.analyze('Invalid prompt');
       assert.ok(response);

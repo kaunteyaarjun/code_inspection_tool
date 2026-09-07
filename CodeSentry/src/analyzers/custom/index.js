@@ -3,8 +3,10 @@ const path = require('node:path');
 const { analyzeBugs } = require('./bugs');
 const { analyzeEfficiency } = require('./efficiency');
 const { analyzeResources } = require('./resources');
+const { analyzeSecurity } = require('./security');
 
 const ANALYZERS = [
+  { name: 'security', analyze: analyzeSecurity },
   { name: 'bugs', analyze: analyzeBugs },
   { name: 'efficiency', analyze: analyzeEfficiency },
   { name: 'resources', analyze: analyzeResources },

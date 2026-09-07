@@ -46,17 +46,19 @@ function shouldIgnore(filePath, patterns, projectPath) {
 
   for (const pattern of patterns) {
     const normalizedPattern = pattern.replace(/\\/g, '/');
+    const cleanPattern = normalizedPattern.replace(/\/+$/, '');
 
     if (normalizedPattern.includes('*')) {
       if (matchGlob(normalizedRelative, normalizedPattern)) return true;
     } else {
       const parts = normalizedRelative.split('/');
       for (const part of parts) {
-        if (part === normalizedPattern) return true;
+        if (part === cleanPattern) return true;
       }
-      if (normalizedRelative.startsWith(normalizedPattern + '/')) return true;
-      if (normalizedRelative.endsWith('/' + normalizedPattern)) return true;
-      if (normalizedRelative === normalizedPattern) return true;
+      if (normalizedRelative === cleanPattern) return true;
+      if (normalizedRelative.startsWith(cleanPattern + '/')) return true;
+      if (normalizedRelative.endsWith('/' + cleanPattern)) return true;
+      if (normalizedRelative.includes('/' + cleanPattern + '/')) return true;
     }
   }
 

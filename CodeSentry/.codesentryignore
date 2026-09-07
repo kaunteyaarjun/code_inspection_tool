@@ -34,6 +34,9 @@ Thumbs.db
 # Test and coverage
 coverage/
 .nyc_output/
+tests/fixtures/
+fixtures/
+__fixtures__/
 
 # Generated files
 *.min.js
