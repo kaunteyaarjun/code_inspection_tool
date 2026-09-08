@@ -5,6 +5,7 @@
 
 [![Node.js Version](https://img.shields.io/badge/node-%3E%3D18.0.0-brightgreen.svg)](https://nodejs.org/)
 [![Pure Node](https://img.shields.io/badge/Docker-Not%20Required-success.svg)](#zero-docker-required)
+[![Architecture & Workflow](https://img.shields.io/badge/Architecture-workflow.md-blue.svg)](workflow.md)
 
 CodeSentry inspects JavaScript, TypeScript, and Python codebases for security vulnerabilities, logic bugs, algorithmic bottlenecks, and resource leaks. Built with a terminal-native dark aesthetic inspired by OpenCode, it offers built-in security detection, interactive code repairs, and dynamic AI-powered security hardening.
 
