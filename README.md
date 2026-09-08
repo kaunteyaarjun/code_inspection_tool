@@ -17,7 +17,7 @@ Run instantly without cloning or installing dependencies:
 
 ```bash
 # Run directly from GitHub with zero install:
-npx github:raelx20/code_inspection_tool scan .
+npx github:raelx20/codesentry scan .
 
 # Or scan using global npm package:
 npx codesentry scan .
@@ -81,8 +81,8 @@ npx codesentry scan .
 
 ### Option C: Clone & Run from Source
 ```bash
-git clone https://github.com/raelx20/code_inspection_tool.git
-cd code_inspection_tool/CodeSentry
+git clone https://github.com/raelx20/codesentry.git
+cd codesentry/CodeSentry
 npm install
 npm link # or node bin/codesentry.js scan .
 ```
@@ -196,7 +196,7 @@ jobs:
           node-version: 20
 
       - name: Run CodeSentry Scan
-        run: npx github:raelx20/code_inspection_tool scan . --severity HIGH
+        run: npx github:raelx20/codesentry scan . --severity HIGH
         env:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
 ```
