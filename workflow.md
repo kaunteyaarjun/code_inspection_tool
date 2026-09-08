@@ -5,95 +5,7 @@
 
 ---
 
-## 1. System Architecture Overview
-
-CodeSentry is structured as a layered, modular DevSecOps platform built on **pure Node.js** with zero external runtime dependencies and **zero Docker requirement**. It integrates deterministic static analysis (SAST) with contextual large language model (LLM) verification and interactive terminal-driven remediation.
-
-```mermaid
-flowchart TD
-    subgraph Ingestion ["1. INGESTION & DISCOVERY"]
-        CLI["CLI Command / npx Invocation<br><code>npx github:kaunteyaarjun/code_inspection_tool scan .</code>"]
-        Config["Config Resolver<br><code>src/core/config.js</code><br>+ Global <code>~/.codesentry/config.json</code>"]
-        Discovery["Discovery Engine<br><code>src/discovery/discover.js</code><br>Language detection & file walk"]
-        Ignore["Ignore Cascade<br><code>.codesentryignore</code> + <code>.gitignore</code><br>+ vendor exclusions"]
-        
-        CLI --> Config --> Discovery
-        Discovery --> Ignore
-    end
-
-    subgraph StaticAnalysis ["2. MULTI-TIER STATIC ANALYSIS PIPELINE"]
-        ToolProbe["Tool Availability Probe<br><code>src/analyzers/static/tools.js</code>"]
-        ExtLinters["External Adapters (Optional)<br>ESLint · TypeScript · Ruff · Bandit · Semgrep"]
-        CustomSAST["Native Custom SAST Engine<br><code>src/analyzers/custom/index.js</code>"]
-        SecSAST["Security Analyzer<br>SQLi · Code Exec · Secrets · Paths · Crypto"]
-        BugSAST["Bugs Analyzer<br>Loose == · Off-by-one · Catch · Returns"]
-        EffSAST["Efficiency Analyzer<br>DOM Thrashing · Unindexed Loops"]
-        ResSAST["Resources Analyzer<br>File Handles · Leaked Timers / Listeners"]
-
-        Ignore --> ToolProbe
-        ToolProbe --> ExtLinters
-        ToolProbe --> CustomSAST
-        CustomSAST --> SecSAST
-        CustomSAST --> BugSAST
-        CustomSAST --> EffSAST
-        CustomSAST --> ResSAST
-    end
-
-    subgraph Normalization ["3. NORMALIZATION & SCORING"]
-        Norm["Normalizer Engine<br><code>src/findings/normalize.js</code>"]
-        Dedupe["Deduplication Engine<br><code>src/findings/dedupe.js</code>"]
-        Filter["Threshold & Category Filter<br><code>src/core/scan.js</code>"]
-        Aggregate["Finding Aggregator<br><code>src/core/aggregation.js</code>"]
-        Score["Quality Scoring Engine<br><code>src/core/scoring.js</code> (0-100)"]
-        Verdict["Verdict Engine<br><code>src/core/verdict.js</code> (PASS / WARN / FAIL)"]
-
-        ExtLinters --> Norm
-        SecSAST --> Norm
-        BugSAST --> Norm
-        EffSAST --> Norm
-        ResSAST --> Norm
-        Norm --> Dedupe --> Filter --> Aggregate --> Score --> Verdict
-    end
-
-    subgraph AIVerification ["4. CONTEXTUAL AI TRIAGE LAYER"]
-        AICondition{"Findings > 0 &<br>AI Enabled?"}
-        Router["OpenRouter Client<br><code>src/analyzers/ai/openrouter.js</code>"]
-        Catalog["Dynamic Model Catalog<br>Laguna S 2.1 · Nemotron 3 · MiniMax · Auto"]
-        FallbackChain["Fallback Chain<br>Primary ➔ Secondary ➔ Auto ➔ Mock"]
-        Enrichment["Finding Enrichment<br>Root-cause explanation · Fix suggestion"]
-
-        Verdict --> AICondition
-        AICondition -- Yes --> Router
-        Router --> Catalog --> FallbackChain --> Enrichment
-        AICondition -- No --> PostScan
-    end
-
-    subgraph PostScan ["5. POST-SCAN PRESENTATION & ACTIONS"]
-        Format["Terminal UI Formatter<br><code>src/cli/formatter.js</code><br>Theme cards, clickable links, stats"]
-        ReportGen["Report Generator<br><code>src/cli/report.js</code><br><code>CODESENTRY-AUDIT-*.md</code>"]
-        InteractivePrompt{"Interactive Mode?<br>(TTY Session)"}
-
-        Enrichment --> Format
-        Format --> ReportGen --> InteractivePrompt
-    end
-
-    subgraph Remediation ["6. INTERACTIVE REMEDIATION & HARDENING"]
-        FixEngine["Interactive Fix Engine<br><code>src/cli/fixer.js</code><br>Whole Codebase vs Specific Flaw"]
-        DiffPreview["Color-coded Diff Preview<br><code>formatDiffPreview()</code>"]
-        SafeApply["Atomic Disk Patch<br><code>applyFixToFile()</code>"]
-        Rescan["Automatic Rescan<br>Verification loop"]
-
-        Enhancer["Proactive AI Hardening<br><code>src/cli/enhancer.js</code><br>(Triggered when findings = 0)"]
-        ExportMD["Export Advisory<br><code>AI-SECURITY-SUGGESTIONS.md</code>"]
-
-        InteractivePrompt -- Has Findings --> FixEngine --> DiffPreview --> SafeApply --> Rescan
-        InteractivePrompt -- Clean Codebase --> Enhancer --> ExportMD
-    end
-```
-
----
-
-## 2. Core Architectural Pillars
+## 1. Core Architectural Pillars
 
 | Pillar | Technical Implementation | Benefit |
 |---|---|---|
@@ -106,7 +18,7 @@ flowchart TD
 
 ---
 
-## 3. Detailed Layer-by-Layer Breakdown
+## 2. Detailed Layer-by-Layer Breakdown
 
 ### Layer 1: CLI Dispatch & Interactive Runtime Host
 
@@ -399,7 +311,7 @@ npx github:kaunteyaarjun/code_inspection_tool scan . --severity HIGH --no-report
 
 ---
 
-## 4. End-to-End Execution Flow (Data Trace)
+## 3. End-to-End Execution Flow (Data Trace)
 
 Below is an end-to-end trace of data structures passing through CodeSentry during a scan:
 
@@ -448,7 +360,7 @@ createConfig({ projectPath: '.', severityThreshold: 'HIGH' })
 
 ---
 
-## 5. Complete Codebase Directory Map
+## 4. Complete Codebase Directory Map
 
 ```
 code_inspection_tool/
@@ -516,6 +428,94 @@ code_inspection_tool/
         ├── integration/               # End-to-end scan pipeline tests
         ├── unit/                      # Modular unit tests (AI, auth, CLI, fixer, enhancer, report, config)
         └── fixtures/                  # Isolated test fixtures (broken code, clean code, polyglot)
+```
+
+---
+
+## 5. System Architecture Overview
+
+CodeSentry is structured as a layered, modular DevSecOps platform built on **pure Node.js** with zero external runtime dependencies and **zero Docker requirement**. It integrates deterministic static analysis (SAST) with contextual large language model (LLM) verification and interactive terminal-driven remediation.
+
+```mermaid
+flowchart TD
+    subgraph Ingestion ["1. INGESTION & DISCOVERY"]
+        CLI["CLI Command / npx Invocation<br><code>npx github:kaunteyaarjun/code_inspection_tool scan .</code>"]
+        Config["Config Resolver<br><code>src/core/config.js</code><br>+ Global <code>~/.codesentry/config.json</code>"]
+        Discovery["Discovery Engine<br><code>src/discovery/discover.js</code><br>Language detection & file walk"]
+        Ignore["Ignore Cascade<br><code>.codesentryignore</code> + <code>.gitignore</code><br>+ vendor exclusions"]
+        
+        CLI --> Config --> Discovery
+        Discovery --> Ignore
+    end
+
+    subgraph StaticAnalysis ["2. MULTI-TIER STATIC ANALYSIS PIPELINE"]
+        ToolProbe["Tool Availability Probe<br><code>src/analyzers/static/tools.js</code>"]
+        ExtLinters["External Adapters (Optional)<br>ESLint · TypeScript · Ruff · Bandit · Semgrep"]
+        CustomSAST["Native Custom SAST Engine<br><code>src/analyzers/custom/index.js</code>"]
+        SecSAST["Security Analyzer<br>SQLi · Code Exec · Secrets · Paths · Crypto"]
+        BugSAST["Bugs Analyzer<br>Loose == · Off-by-one · Catch · Returns"]
+        EffSAST["Efficiency Analyzer<br>DOM Thrashing · Unindexed Loops"]
+        ResSAST["Resources Analyzer<br>File Handles · Leaked Timers / Listeners"]
+
+        Ignore --> ToolProbe
+        ToolProbe --> ExtLinters
+        ToolProbe --> CustomSAST
+        CustomSAST --> SecSAST
+        CustomSAST --> BugSAST
+        CustomSAST --> EffSAST
+        CustomSAST --> ResSAST
+    end
+
+    subgraph Normalization ["3. NORMALIZATION & SCORING"]
+        Norm["Normalizer Engine<br><code>src/findings/normalize.js</code>"]
+        Dedupe["Deduplication Engine<br><code>src/findings/dedupe.js</code>"]
+        Filter["Threshold & Category Filter<br><code>src/core/scan.js</code>"]
+        Aggregate["Finding Aggregator<br><code>src/core/aggregation.js</code>"]
+        Score["Quality Scoring Engine<br><code>src/core/scoring.js</code> (0-100)"]
+        Verdict["Verdict Engine<br><code>src/core/verdict.js</code> (PASS / WARN / FAIL)"]
+
+        ExtLinters --> Norm
+        SecSAST --> Norm
+        BugSAST --> Norm
+        EffSAST --> Norm
+        ResSAST --> Norm
+        Norm --> Dedupe --> Filter --> Aggregate --> Score --> Verdict
+    end
+
+    subgraph AIVerification ["4. CONTEXTUAL AI TRIAGE LAYER"]
+        AICondition{"Findings > 0 &<br>AI Enabled?"}
+        Router["OpenRouter Client<br><code>src/analyzers/ai/openrouter.js</code>"]
+        Catalog["Dynamic Model Catalog<br>Laguna S 2.1 · Nemotron 3 · MiniMax · Auto"]
+        FallbackChain["Fallback Chain<br>Primary ➔ Secondary ➔ Auto ➔ Mock"]
+        Enrichment["Finding Enrichment<br>Root-cause explanation · Fix suggestion"]
+
+        Verdict --> AICondition
+        AICondition -- Yes --> Router
+        Router --> Catalog --> FallbackChain --> Enrichment
+        AICondition -- No --> PostScan
+    end
+
+    subgraph PostScan ["5. POST-SCAN PRESENTATION & ACTIONS"]
+        Format["Terminal UI Formatter<br><code>src/cli/formatter.js</code><br>Theme cards, clickable links, stats"]
+        ReportGen["Report Generator<br><code>src/cli/report.js</code><br><code>CODESENTRY-AUDIT-*.md</code>"]
+        InteractivePrompt{"Interactive Mode?<br>(TTY Session)"}
+
+        Enrichment --> Format
+        Format --> ReportGen --> InteractivePrompt
+    end
+
+    subgraph Remediation ["6. INTERACTIVE REMEDIATION & HARDENING"]
+        FixEngine["Interactive Fix Engine<br><code>src/cli/fixer.js</code><br>Whole Codebase vs Specific Flaw"]
+        DiffPreview["Color-coded Diff Preview<br><code>formatDiffPreview()</code>"]
+        SafeApply["Atomic Disk Patch<br><code>applyFixToFile()</code>"]
+        Rescan["Automatic Rescan<br>Verification loop"]
+
+        Enhancer["Proactive AI Hardening<br><code>src/cli/enhancer.js</code><br>(Triggered when findings = 0)"]
+        ExportMD["Export Advisory<br><code>AI-SECURITY-SUGGESTIONS.md</code>"]
+
+        InteractivePrompt -- Has Findings --> FixEngine --> DiffPreview --> SafeApply --> Rescan
+        InteractivePrompt -- Clean Codebase --> Enhancer --> ExportMD
+    end
 ```
 
 ---
