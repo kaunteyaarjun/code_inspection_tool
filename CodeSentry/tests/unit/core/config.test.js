@@ -8,7 +8,7 @@ describe('Config', () => {
     const config = createConfig();
     assert.equal(config.projectPath, path.resolve(process.cwd()));
     assert.deepEqual(config.enabledAnalyzers, DEFAULTS.enabledAnalyzers);
-    assert.equal(config.aiEnabled, false);
+    assert.equal(config.aiEnabled, true);
     assert.equal(config.severityThreshold, 'LOW');
     assert.equal(config.failOn, null);
   });
@@ -16,13 +16,13 @@ describe('Config', () => {
   it('should override defaults with provided values', () => {
     const config = createConfig({
       projectPath: '/tmp/test',
-      aiEnabled: true,
+      aiEnabled: false,
       severityThreshold: 'HIGH',
       failOn: 'BLOCKER',
       validatePath: false,
     });
     assert.equal(config.projectPath, path.resolve('/tmp/test'));
-    assert.equal(config.aiEnabled, true);
+    assert.equal(config.aiEnabled, false);
     assert.equal(config.severityThreshold, 'HIGH');
     assert.equal(config.failOn, 'BLOCKER');
   });

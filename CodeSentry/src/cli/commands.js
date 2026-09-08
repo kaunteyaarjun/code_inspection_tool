@@ -1,5 +1,8 @@
 const COMMANDS = {
   SCAN: 'scan',
+  MODEL: 'model',
+  AUTH: 'auth',
+  LOGIN: 'login',
   VERSION: 'version',
   HELP: 'help',
 };
@@ -9,8 +12,10 @@ const OPTIONS = {
   VERBOSE: '--verbose',
   SEVERITY: '--severity',
   CATEGORY: '--category',
-  AI: '--ai',
+  NO_AI: '--no-ai',
   AI_MODEL: '--ai-model',
+  NO_REPORT: '--no-report',
+  REPORT_FILE: '--report-file',
   HELP: '--help',
   VERSION: '--version',
 };
@@ -38,7 +43,10 @@ class CommandParser {
     
     // Parse command
     const command = args[i];
-    if (Object.values(COMMANDS).includes(command)) {
+    if (command === COMMANDS.LOGIN || command === COMMANDS.AUTH) {
+      result.command = COMMANDS.AUTH;
+      i++;
+    } else if (Object.values(COMMANDS).includes(command)) {
       result.command = command;
       i++;
     } else if (command.startsWith('-')) {
@@ -82,8 +90,8 @@ class CommandParser {
           result.errors.push('Missing value for --category');
           i++;
         }
-      } else if (arg === OPTIONS.AI) {
-        result.options.ai = true;
+      } else if (arg === OPTIONS.NO_AI) {
+        result.options.noAi = true;
         i++;
       } else if (arg === OPTIONS.AI_MODEL) {
         if (i + 1 < args.length) {
@@ -93,8 +101,23 @@ class CommandParser {
           result.errors.push('Missing value for --ai-model');
           i++;
         }
+      } else if (arg === OPTIONS.NO_REPORT) {
+        result.options.noReport = true;
+        i++;
+      } else if (arg === OPTIONS.REPORT_FILE) {
+        if (i + 1 < args.length) {
+          result.options.reportFile = args[i + 1];
+          i += 2;
+        } else {
+          result.errors.push('Missing value for --report-file');
+          i++;
+        }
       } else if (!arg.startsWith('-') && !result.projectPath) {
         result.projectPath = arg;
+        i++;
+      } else if (!arg.startsWith('-') && result.projectPath) {
+        // Support unquoted paths that contain spaces (e.g. "codesenty bt-")
+        result.projectPath += ` ${arg}`;
         i++;
       } else {
         result.errors.push(`Unknown argument: ${arg}`);
@@ -144,28 +167,38 @@ class CommandParser {
 Usage: codesentry <command> [options]
 
 Commands:
-  scan [path]     Scan the specified project (defaults to cwd)
-  version         Show version
-  help            Show this help message
+  scan [path]         Scan a project (defaults to current directory)
+  model               Interactively switch or select the active AI model
+  auth                Configure or view OpenRouter API key & credentials
+  version             Show version
+  help                Show this help message
+
+AI analysis and Markdown report generation are ON by default.
 
 Options:
-  --json          Output results as JSON
-  --verbose       Show detailed progress information
+  --json              Output results as JSON
+  --verbose           Show detailed progress information
   --severity <level>  Filter by severity (BLOCKER, HIGH, MEDIUM, LOW, INFO)
   --category <cat>    Filter by category (security, bugs, efficiency, resources)
-  --ai            Enable AI-powered analysis (auto-selects model based on codebase)
-  --ai-model <model>  Force a specific AI model (e.g., nvidia/nemotron-3-super-120b-a12b:free)
-  --help, -h      Show this help message
-  --version       Show version
+  --ai-model <model>  Override the AI model (default: auto-selected)
+  --report-file <path>  Set custom report output filename
+  --no-ai             Disable AI-powered analysis
+  --no-report         Disable Markdown report generation
+  --help, -h          Show this help message
+  --version           Show version
 
 Examples:
-  codesentry scan ./my-project
-  codesentry scan ./my-project --json
-  codesentry scan ./my-project --severity high
-  codesentry scan ./my-project --category security
-  codesentry scan ./my-project --ai
-  codesentry scan ./my-project --ai --ai-model nvidia/nemotron-3-ultra-550b-a55b:free
-  codesentry version
+  codesentry scan                                    Full scan with AI + report
+  codesentry scan ./my-project                       Scan a specific project
+  codesentry scan . --severity high                  Only show high+ findings
+  codesentry scan . --category security              Security findings only
+  codesentry scan . --ai-model mimo/mimo-2.5:free    Use a specific model
+  codesentry scan . --report-file audit.md           Custom report filename
+  codesentry auth                                    Configure or view API credentials
+  codesentry model                                   Switch AI model
+  codesentry scan . --no-ai                          Fast scan, no AI
+  codesentry scan . --no-ai --no-report              Static analysis only
+  codesentry scan . --json                           Machine-readable output
 `;
   }
 

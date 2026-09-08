@@ -1,17 +1,105 @@
 #!/usr/bin/env node
 
-require('dotenv').config();
-const { createCommandParser, COMMANDS } = require('../src/cli/commands');
-const { createOutputHandler, OUTPUT_MODES } = require('../src/cli/output');
-const { createProgressTracker, PROGRESS_STATES } = require('../src/cli/progress');
-const { createFormatter } = require('../src/cli/formatter');
-const { scan } = require('../src/core/scan');
+/**
+ * CodeSentry CLI entry point
+ *
+ * Works correctly under all install modes:
+ *   npx codesentry scan .              (ephemeral)
+ *   npm i -g codesentry && codesentry  (global)
+ *   npm link && codesentry             (local dev)
+ *   node bin/codesentry.js             (direct)
+ */
+
+'use strict';
+
+const fs = require('node:fs');
+const path = require('node:path');
+
+// ── Resolve the package root regardless of how we were invoked ──────────────
+// __dirname = <package>/bin  →  packageRoot = <package>
+const packageRoot = path.resolve(__dirname, '..');
+
+// ── Load .env from the user's current working directory (the project they
+//    are scanning). During test runs, allow falling back to packageRoot .env.
+require('dotenv').config({ path: path.resolve(process.cwd(), '.env'), quiet: true });
+if (process.env.NODE_ENV === 'test') {
+  require('dotenv').config({ path: path.resolve(packageRoot, '.env'), quiet: true });
+}
+
+// ── Require modules relative to the package root ────────────────────────────
+const auth = require(path.join(packageRoot, 'src', 'cli', 'auth'));
+auth.loadGlobalConfig();
+
+const { createCommandParser, COMMANDS } = require(path.join(packageRoot, 'src', 'cli', 'commands'));
+const { createOutputHandler, OUTPUT_MODES } = require(path.join(packageRoot, 'src', 'cli', 'output'));
+const { createProgressTracker, PROGRESS_STATES } = require(path.join(packageRoot, 'src', 'cli', 'progress'));
+const { createFormatter } = require(path.join(packageRoot, 'src', 'cli', 'formatter'));
+const { createReportGenerator } = require(path.join(packageRoot, 'src', 'cli', 'report'));
+const { Select } = require(path.join(packageRoot, 'src', 'cli', 'components', 'select'));
+const { formatStatusIndicator } = require(path.join(packageRoot, 'src', 'cli', 'components', 'status-indicator'));
+const fixer = require(path.join(packageRoot, 'src', 'cli', 'fixer'));
+const enhancer = require(path.join(packageRoot, 'src', 'cli', 'enhancer'));
+const theme = require(path.join(packageRoot, 'src', 'cli', 'theme'));
+const { scan } = require(path.join(packageRoot, 'src', 'core', 'scan'));
+
+// ── AI Model Catalog for Interactive Selection ──────────────────────────────
+const AI_MODEL_OPTIONS = [
+  {
+    label: 'Laguna S 2.1 (poolside/laguna-s-2.1:free)',
+    value: 'poolside/laguna-s-2.1:free',
+    badge: 'RECOMMENDED',
+    description: 'Ultra-fast, accurate coding reasoning and DevSecOps triage',
+  },
+  {
+    label: 'Nemotron 3 Ultra (nvidia/nemotron-3-ultra-550b-a55b:free)',
+    value: 'nvidia/nemotron-3-ultra-550b-a55b:free',
+    badge: '550B PARAMS',
+    description: 'Heavyweight reasoning for complex multi-file architectural exploits',
+  },
+  {
+    label: 'MiniMax M2.5 (minimax/minimax-m2.5:free)',
+    value: 'minimax/minimax-m2.5:free',
+    description: 'High-speed balanced code inspection and remediation diffs',
+  },
+  {
+    label: 'Nemotron 3 Super (nvidia/nemotron-3-super-120b-a12b:free)',
+    value: 'nvidia/nemotron-3-super-120b-a12b:free',
+    description: 'Accurate syntax and vulnerability detection across polyglot stacks',
+  },
+  {
+    label: 'Mimo 2.5 (mimo/mimo-2.5:free)',
+    value: 'mimo/mimo-2.5:free',
+    description: 'Lightweight specialized code inspection model',
+  },
+  {
+    label: 'North Mini Code (cohere/north-mini-code:free)',
+    value: 'cohere/north-mini-code:free',
+    description: 'Fast Cohere-optimized code structure analysis',
+  },
+  {
+    label: 'Auto (Smart Context-Aware Heuristics)',
+    value: 'auto',
+    badge: 'AUTO',
+    description: 'Dynamically adapts model selection based on project size & complexity',
+  },
+  {
+    label: 'Disable AI (Static Analysis Only)',
+    value: 'none',
+    description: 'Run static engines (Ruff, Bandit, Semgrep) without cloud AI',
+  },
+];
+
+// Ctrl+C graceful exit handler
+process.on('SIGINT', () => {
+  console.log('\n' + theme.colors.cyan('◆') + ' ' + theme.colors.white('CodeSentry session closed.'));
+  process.exit(0);
+});
 
 async function main() {
   const parser = createCommandParser();
   const parsed = parser.parse(process.argv.slice(2));
   const validation = parser.validate(parsed);
-  
+
   if (!validation.valid) {
     const output = createOutputHandler({ mode: OUTPUT_MODES.TERMINAL });
     output.printError('Error:');
@@ -23,6 +111,7 @@ async function main() {
 
   if (parsed.command === COMMANDS.HELP) {
     const output = createOutputHandler({ mode: OUTPUT_MODES.TERMINAL });
+    output.print(theme.renderLogo());
     output.print(parser.getHelp());
     process.exit(0);
   }
@@ -33,105 +122,594 @@ async function main() {
     process.exit(0);
   }
 
+  // ── Standalone 'auth' command ──────────────────────────────────────────────
+  if (parsed.command === COMMANDS.AUTH) {
+    await auth.handleAuthCommand();
+    process.exit(0);
+  }
+
+  // ── Standalone 'model' command ─────────────────────────────────────────────
+  if (parsed.command === COMMANDS.MODEL) {
+    theme.applyBlackTerminalBackground();
+    const output = createOutputHandler({ mode: OUTPUT_MODES.TERMINAL });
+    output.print(theme.renderLogo());
+
+    const currentEnvModel = process.env.OPENROUTER_MODEL || 'auto';
+    const defaultIdx = Math.max(0, AI_MODEL_OPTIONS.findIndex(m => m.value === currentEnvModel));
+
+    const chosen = await Select({
+      label: 'Select Active AI Model for CodeSentry:',
+      options: AI_MODEL_OPTIONS,
+      defaultIndex: defaultIdx,
+    });
+
+    if (chosen) {
+      if (chosen === 'none') {
+        output.print('\n' + formatStatusIndicator({ status: 'warning', label: 'AI analysis disabled. Static analysis only.' }));
+      } else {
+        output.print('\n' + formatStatusIndicator({ status: 'online', label: `Active AI model set to: ${theme.colors.cyan(chosen)}` }));
+        try {
+          auth.saveGlobalConfig({ openrouter_model: chosen });
+          const envPath = path.resolve(process.cwd(), '.env');
+          let envContent = fs.existsSync(envPath) ? fs.readFileSync(envPath, 'utf8') : '';
+          if (/^OPENROUTER_MODEL=.*$/m.test(envContent)) {
+            envContent = envContent.replace(/^OPENROUTER_MODEL=.*$/m, `OPENROUTER_MODEL=${chosen}`);
+          } else {
+            envContent = envContent.trim() ? `${envContent.trim()}\nOPENROUTER_MODEL=${chosen}\n` : `OPENROUTER_MODEL=${chosen}\n`;
+          }
+          fs.writeFileSync(envPath, envContent, 'utf8');
+          output.print(theme.colors.gray(`  Saved preference globally to ~/.codesentry/config.json`));
+        } catch {}
+      }
+    }
+    process.exit(0);
+  }
+
+  // ── 'scan' command with interactive session loop ───────────────────────────
   if (parsed.command === COMMANDS.SCAN) {
     const jsonMode = parsed.options.json || false;
     const verbose = parsed.options.verbose || false;
-    
-    const output = createOutputHandler({ 
-      mode: jsonMode ? OUTPUT_MODES.JSON : OUTPUT_MODES.TERMINAL 
+
+    const output = createOutputHandler({
+      mode: jsonMode ? OUTPUT_MODES.JSON : OUTPUT_MODES.TERMINAL,
     });
-    
-    const progress = createProgressTracker({ 
-      verbose, 
-      jsonMode 
-    });
-    
+
     const formatter = createFormatter();
-    
-    progress.start();
-    
-    try {
-      progress.update(PROGRESS_STATES.DISCOVERING);
-      
-      const scanOptions = {
-        projectPath: parsed.projectPath,
+
+    // Mutable state for the interactive loop
+    let currentModel = parsed.options.aiModel || process.env.OPENROUTER_MODEL || 'auto';
+    let currentNoAi = Boolean(parsed.options.noAi || currentModel === 'none');
+    let isFirstRun = true;
+    let lastReportPath = null;
+
+    // First-boot / auth check: Prompt if no key is configured and AI is not explicitly disabled
+    if (!currentNoAi) {
+      const authResult = await auth.ensureAuth({
         jsonMode,
+        noAi: currentNoAi,
+      });
+      if (authResult.skipped && !process.env.OPENROUTER_API_KEY) {
+        currentNoAi = true;
+        currentModel = 'none';
+      } else if (authResult.isConfigured) {
+        if (!parsed.options.aiModel && authResult.model) {
+          currentModel = authResult.model;
+        }
+      }
+    }
+
+    while (true) {
+      const progress = createProgressTracker({
         verbose,
-      };
-      
-      if (parsed.options.severity) {
-        scanOptions.severityThreshold = parsed.options.severity.toUpperCase();
-      }
-      
-      if (parsed.options.category) {
-        scanOptions.categoryFilter = parsed.options.category.toLowerCase();
-      }
-      
-      if (parsed.options.ai) {
-        scanOptions.aiEnabled = true;
-      }
-      
-      if (parsed.options.aiModel) {
-        scanOptions.aiModel = parsed.options.aiModel;
-      }
-      
-      const result = await scan(parsed.projectPath, scanOptions);
-      
-      progress.update(PROGRESS_STATES.COMPLETED);
-      const progressSummary = progress.complete(true);
-      
-      if (jsonMode) {
-        output.printJSON(result);
-      } else {
-        output.print('');
-        output.printBox(['CODESENTRY'], { width: 40, title: '' });
-        output.print('');
-        
-        const summaryLines = formatter.formatSummary(result);
-        for (const line of summaryLines) {
-          output.print(line);
-        }
-        
-        output.print('');
-        output.printSeparator();
-        output.print('');
-        
-        const findingLines = formatter.formatFindings(result.findings, { 
-          limit: 10, 
-          showDetails: true 
-        });
-        for (const line of findingLines) {
-          output.print(line);
-        }
-        
-        output.print('');
-        output.print(`Completed in ${result.metadata.duration}ms`);
-      }
-      
-      // Determine exit code based on findings
-      let exitCode = 0;
-      if (result.metadata.errors.length > 0) {
-        exitCode = 2;
-      } else if (result.aggregation.total > 0) {
-        exitCode = 1;
-      }
-      
-      process.exit(exitCode);
-      
-    } catch (err) {
-      progress.error(`Scan failed: ${err.message}`);
-      progress.complete(false);
-      
+        jsonMode,
+      });
+
       if (!jsonMode) {
-        output.printError(`\nScan failed: ${err.message}\n`);
-      } else {
-        output.printJSON({ 
-          error: err.message,
-          success: false 
+        theme.applyBlackTerminalBackground();
+        if (isFirstRun) {
+          output.print(theme.renderLogo());
+          isFirstRun = false;
+        }
+        output.print(theme.renderSessionCard(parsed.projectPath, {
+          aiModel: currentNoAi ? 'disabled (static)' : currentModel,
+        }));
+        output.print('');
+      }
+
+      progress.start();
+
+      let result;
+      let lastExitCode = 0;
+
+      try {
+        progress.update(PROGRESS_STATES.DISCOVERING);
+
+        const scanOptions = {
+          projectPath: parsed.projectPath,
+          jsonMode,
+          verbose,
+          aiEnabled: !currentNoAi,
+        };
+
+        if (parsed.options.severity) {
+          scanOptions.severityThreshold = parsed.options.severity.toUpperCase();
+        }
+
+        if (parsed.options.category) {
+          scanOptions.categoryFilter = parsed.options.category.toLowerCase();
+        }
+
+        if (!currentNoAi && currentModel && currentModel !== 'auto') {
+          scanOptions.aiModel = currentModel;
+        }
+
+        result = await scan(parsed.projectPath, scanOptions);
+
+        progress.update(PROGRESS_STATES.COMPLETED);
+        progress.complete(true);
+
+        if (jsonMode) {
+          output.printJSON(result);
+        } else {
+          output.print('');
+          const summaryLines = formatter.formatSummary(result);
+          for (const line of summaryLines) {
+            output.print(line);
+          }
+
+          output.print('');
+
+          const findingLines = formatter.formatFindings(result.findings, {
+            limit: 10,
+            showDetails: true,
+          });
+          for (const line of findingLines) {
+            output.print(line);
+          }
+        }
+
+        // Generate report by default (disable with --no-report)
+        if (!parsed.options.noReport) {
+          try {
+            const reportGen = createReportGenerator({
+              outputDir: parsed.projectPath,
+              filename: parsed.options.reportFile || null,
+            });
+            const reportPath = reportGen.generate(result);
+            lastReportPath = reportPath;
+
+            if (!jsonMode) {
+              output.print('');
+              const fileName = path.basename(reportPath);
+              const relPath = path.relative(process.cwd(), reportPath) || fileName;
+              const displayRelPath = relPath.length > 50 ? '...' + relPath.slice(-47) : relPath;
+              const clickableReportName = theme.createClickableLink(reportPath, theme.colors.brightWhite(fileName));
+              const clickableRelPath = theme.createClickableLink(reportPath, theme.colors.cyan(displayRelPath));
+
+              const footerLines = [
+                `${theme.colors.cyan('■ File')}     ${clickableReportName} ${theme.colors.gray('(Click to open in editor)')}`,
+                `${theme.colors.gray('■ Path')}     ${clickableRelPath}`,
+                `${theme.colors.gray('■ Status')}   ${theme.colors.green('✔ Audit complete')} ${theme.colors.darkGray('·')} ${theme.colors.white(`${result.metadata.duration}ms`)} ${theme.colors.darkGray('·')} ${theme.colors.cyan(result.languages.join(', ') || 'polyglot')}`,
+              ];
+              output.print(theme.card(footerLines, {
+                title: theme.colors.cyan(theme.bold('AUDIT REPORT')),
+                rightTitle: theme.colors.gray('codesentry v0.1.0'),
+                width: 72,
+              }));
+              output.print('');
+            }
+          } catch (reportErr) {
+            if (!jsonMode) {
+              output.printError(`\nFailed to generate report: ${reportErr.message}`);
+            }
+          }
+        }
+
+        // Determine exit code
+        if (result.metadata.errors.length > 0) {
+          lastExitCode = 2;
+        } else if (result.aggregation.total > 0) {
+          lastExitCode = 1;
+        } else {
+          lastExitCode = 0;
+        }
+      } catch (err) {
+        progress.error(`Scan failed: ${err.message}`);
+        progress.complete(false);
+
+        if (!jsonMode) {
+          output.printError(`\nScan failed: ${err.message}\n`);
+        } else {
+          output.printJSON({
+            error: err.message,
+            success: false,
+          });
+        }
+        lastExitCode = 2;
+      }
+
+      // Non-interactive or JSON mode exits immediately (e.g. CI/CD or automation)
+      const isInteractive = Boolean(process.stdout.isTTY && process.stdin.isTTY && !jsonMode);
+      if (!isInteractive) {
+        process.exit(lastExitCode);
+      }
+
+      // ── Interactive Post-Scan Menu ─────────────────────────────────────────
+      // "dont return the empty terminal get option to scan again with toggle"
+      // "only ctrl+c should let me exit the codecentry"
+      const actionOptions = [];
+
+      if (result && result.findings && result.findings.length > 0) {
+        actionOptions.push({
+          label: `Apply AI Improvements / Fixes (${result.findings.length} findings available)`,
+          value: 'apply_improvements',
+          badge: 'FIX',
+          description: 'Interactively correct security flaws and bugs across your codebase',
+        });
+      } else if (result) {
+        actionOptions.push({
+          label: 'Ask AI for Proactive Security Suggestions (Codebase Clean)',
+          value: 'ai_security_suggestions',
+          badge: 'AI',
+          description: 'Consult the active AI model for tailored defense-in-depth security hardening recommendations',
         });
       }
-      
-      process.exit(2);
+
+      const shortModel = currentNoAi ? 'Static' : (currentModel.split('/')[1]?.split(':')[0] || currentModel);
+      actionOptions.push(
+        {
+          label: `Rescan codebase (${shortModel})`,
+          value: 'rescan',
+          badge: 'RESCAN',
+          description: 'Re-audit the codebase immediately',
+        },
+        {
+          label: 'Toggle / Switch AI Model & Rescan',
+          value: 'switch_model',
+          badge: 'MODEL',
+          description: 'Change AI model and re-scan the codebase',
+        }
+      );
+
+      if (lastReportPath) {
+        actionOptions.push({
+          label: `Open Markdown Report (${path.basename(lastReportPath)})`,
+          value: 'open_report',
+          badge: 'OPEN',
+          description: 'Launch audit report file directly in your default editor',
+        });
+      }
+
+      const action = await Select({
+        label: 'Audit session active. What would you like to do next?',
+        options: actionOptions,
+        defaultIndex: 0,
+      });
+
+      if (action === 'apply_improvements') {
+        const scopeOptions = [
+          {
+            label: 'Correct entire codebase (All findings)',
+            value: 'whole_codebase',
+            badge: 'ALL',
+            description: `Batch correct all ${result.findings.length} security flaws and bugs across codebase`,
+          },
+          {
+            label: 'Correct specific bug or security flaw',
+            value: 'specific_bug',
+            badge: 'SPECIFIC',
+            description: 'Filter by flaw type (Bugs vs Security) and select individual items to correct',
+          },
+          {
+            label: '← Back to Main Menu',
+            value: 'back',
+            description: 'Return to previous menu',
+          },
+        ];
+
+        const scope = await Select({
+          label: 'Select Fix Scope:',
+          options: scopeOptions,
+          defaultIndex: 0,
+        });
+
+        if (scope === 'back') {
+          continue;
+        }
+
+        if (scope === 'whole_codebase') {
+          output.print('\n' + formatStatusIndicator({ status: 'online', label: 'Applying improvements across entire codebase...' }));
+          let appliedCount = 0;
+          for (const finding of result.findings) {
+            const fix = await fixer.generateFix(parsed.projectPath, finding, { noAi: currentNoAi });
+            if (fix && fix.oldSnippet && fix.newSnippet) {
+              const res = fixer.applyFixToFile(parsed.projectPath, finding, fix);
+              if (res.success) {
+                appliedCount++;
+                output.print(`  ${theme.colors.green('✔')} Corrected ${theme.colors.cyan(finding.file)}${finding.line ? `:${finding.line}` : ''} — ${theme.colors.gray(finding.rule || finding.message)}`);
+              }
+            }
+          }
+          output.print('\n' + formatStatusIndicator({
+            status: 'online',
+            label: `Applied improvements to ${appliedCount} issue(s) across codebase.\n`,
+          }));
+          output.print(theme.colors.gray('Re-initiating scan to verify fixes...\n'));
+          continue;
+        }
+
+        if (scope === 'specific_bug') {
+          // Category filter toggle: Security vs Bugs vs All
+          const securityFindings = result.findings.filter(f => f.category === 'security');
+          const bugFindings = result.findings.filter(f => f.category === 'bugs');
+          const otherFindings = result.findings.filter(f => f.category !== 'security' && f.category !== 'bugs');
+
+          const categoryOptions = [];
+          if (securityFindings.length > 0) {
+            categoryOptions.push({
+              label: `Security Flaws (${securityFindings.length} findings)`,
+              value: 'security',
+              badge: 'SECURITY',
+              description: 'Vulnerabilities, injection attacks, hardcoded secrets, unsafe calls',
+            });
+          }
+          if (bugFindings.length > 0) {
+            categoryOptions.push({
+              label: `Code Bugs (${bugFindings.length} findings)`,
+              value: 'bugs',
+              badge: 'BUGS',
+              description: 'Logic bugs, empty catch blocks, race conditions, type errors',
+            });
+          }
+          if (otherFindings.length > 0) {
+            categoryOptions.push({
+              label: `Efficiency & Resource Issues (${otherFindings.length} findings)`,
+              value: 'other',
+              badge: 'PERF',
+              description: 'Algorithmic bottlenecks and unclosed handles',
+            });
+          }
+
+          categoryOptions.push({
+            label: `All Categories (${result.findings.length} findings)`,
+            value: 'all',
+            badge: 'ALL',
+            description: 'Show all detected findings without filtering',
+          });
+
+          categoryOptions.push({
+            label: '← Back',
+            value: 'back',
+            description: 'Return to previous menu',
+          });
+
+          const selectedCategory = await Select({
+            label: 'Filter by flaw type:',
+            options: categoryOptions,
+            defaultIndex: 0,
+          });
+
+          if (selectedCategory === 'back') {
+            continue;
+          }
+
+          let pool = result.findings;
+          if (selectedCategory === 'security') pool = securityFindings;
+          else if (selectedCategory === 'bugs') pool = bugFindings;
+          else if (selectedCategory === 'other') pool = otherFindings;
+
+          if (pool.length === 0) {
+            output.print('\n' + formatStatusIndicator({ status: 'warning', label: `No findings under category: ${selectedCategory}\n` }));
+            continue;
+          }
+
+          const findingOptions = pool.slice(0, 15).map((f, idx) => ({
+            label: `[${f.severity}] ${path.basename(f.file)}${f.line ? `:${f.line}` : ''} — ${f.rule || f.message.slice(0, 35)}`,
+            value: String(idx),
+            badge: f.severity,
+            description: `${f.file}${f.line ? `:${f.line}` : ''} · ${f.message}`,
+          }));
+
+          findingOptions.push({
+            label: '← Cancel',
+            value: 'cancel',
+            description: 'Return to menu',
+          });
+
+          const chosenIdxStr = await Select({
+            label: 'Select specific flaw to correct:',
+            options: findingOptions,
+            defaultIndex: 0,
+          });
+
+          if (chosenIdxStr === 'cancel') {
+            continue;
+          }
+
+          const targetFinding = pool[parseInt(chosenIdxStr, 10)];
+          if (targetFinding) {
+            output.print('\n' + formatStatusIndicator({ status: 'online', label: 'Generating code improvement...' }));
+            const fix = await fixer.generateFix(parsed.projectPath, targetFinding, { noAi: currentNoAi });
+
+            if (fix.error) {
+              output.printError(`Failed to generate fix: ${fix.error}\n`);
+              continue;
+            }
+
+            output.print('');
+            output.print(fixer.formatDiffPreview(targetFinding, fix));
+            output.print('');
+
+            const confirmAction = await Select({
+              label: 'Apply this improvement to file?',
+              options: [
+                {
+                  label: 'Yes, apply fix to file',
+                  value: 'confirm',
+                  badge: 'APPLY',
+                  description: `Write changes to ${targetFinding.file}`,
+                },
+                {
+                  label: 'No, skip / cancel',
+                  value: 'skip',
+                  description: 'Keep original code unchanged',
+                },
+              ],
+              defaultIndex: 0,
+            });
+
+            if (confirmAction === 'confirm') {
+              const applyRes = fixer.applyFixToFile(parsed.projectPath, targetFinding, fix);
+              if (applyRes.success) {
+                output.print('\n' + formatStatusIndicator({
+                  status: 'online',
+                  label: `Successfully updated ${theme.colors.cyan(targetFinding.file)}${targetFinding.line ? `:${targetFinding.line}` : ''}\n`,
+                }));
+                output.print(theme.colors.gray('Re-initiating scan to verify fix...\n'));
+              } else {
+                output.printError(`Failed to apply fix: ${applyRes.error}\n`);
+              }
+            } else {
+              output.print('\n' + formatStatusIndicator({ status: 'warning', label: 'Fix cancelled. No files modified.\n' }));
+            }
+          }
+        }
+        continue;
+      }
+
+      if (action === 'ai_security_suggestions') {
+        if (currentNoAi || currentModel === 'none') {
+          output.print('\n' + formatStatusIndicator({
+            status: 'warning',
+            label: 'Security suggestions are generated by AI models only. AI analysis is currently disabled.',
+          }));
+          const enableAi = await Select({
+            label: 'Would you like to select an AI model to generate security suggestions?',
+            options: [
+              { label: 'Yes, select an AI model now', value: 'switch' },
+              { label: 'No, return to menu', value: 'cancel' },
+            ],
+            defaultIndex: 0,
+          });
+          if (enableAi === 'switch') {
+            const chosenModel = await Select({
+              label: 'Select AI Model for CodeSentry:',
+              options: AI_MODEL_OPTIONS.filter(m => m.value !== 'none'),
+              defaultIndex: 0,
+            });
+            if (chosenModel) {
+              currentNoAi = false;
+              currentModel = chosenModel;
+              auth.saveGlobalConfig({ openrouter_model: chosenModel });
+            } else {
+              continue;
+            }
+          } else {
+            continue;
+          }
+        }
+
+        output.print('\n' + formatStatusIndicator({
+          status: 'online',
+          label: `Consulting AI model (${theme.colors.cyan(currentModel)}) for proactive security hardening...`,
+        }));
+
+        try {
+          const aiResult = await enhancer.queryAISecuritySuggestions(parsed.projectPath, {
+            model: currentModel,
+            apiKey: process.env.OPENROUTER_API_KEY,
+          });
+
+          output.print('');
+          output.print(theme.card([
+            `${theme.colors.brightWhite(theme.bold('AI Security Architecture Assessment'))} ${theme.colors.gray(`— ${aiResult.model}`)}`,
+            theme.colors.darkGray('─'.repeat(68)),
+            theme.colors.gray(aiResult.summary),
+          ], {
+            title: theme.colors.cyan(theme.bold('AI SECURITY ADVISORY')),
+            rightTitle: theme.colors.green('Zero Vulnerabilities'),
+            width: 72,
+          }));
+          output.print('');
+
+          const total = aiResult.suggestions.length;
+          for (let i = 0; i < total; i++) {
+            output.print(enhancer.formatAISuggestionCard(aiResult.suggestions[i], i, total, aiResult.model));
+            output.print('');
+          }
+
+          const postAiAction = await Select({
+            label: 'AI Security Hardening Suggestions generated. What next?',
+            options: [
+              {
+                label: 'Save AI Security Suggestions to AI-SECURITY-SUGGESTIONS.md',
+                value: 'save_md',
+                badge: 'EXPORT',
+                description: 'Write complete AI hardening guide to project root',
+              },
+              {
+                label: 'Return to Main Menu',
+                value: 'menu',
+                description: 'Continue audit session',
+              },
+            ],
+            defaultIndex: 0,
+          });
+
+          if (postAiAction === 'save_md') {
+            const savedPath = enhancer.exportAISuggestionsToMarkdown(parsed.projectPath, aiResult);
+            const relSaved = path.relative(process.cwd(), savedPath) || savedPath;
+            output.print('\n' + formatStatusIndicator({
+              status: 'online',
+              label: `Saved AI Security Suggestions to ${theme.colors.cyan(relSaved)}`,
+            }) + '\n');
+          }
+        } catch (aiErr) {
+          output.printError(`\nFailed to query AI model: ${aiErr.message}\n`);
+        }
+
+        continue;
+      }
+
+      if (action === 'open_report' && lastReportPath) {
+        try {
+          const { exec } = require('node:child_process');
+          const openCmd = process.platform === 'win32'
+            ? `start "" "${lastReportPath}"`
+            : process.platform === 'darwin'
+            ? `open "${lastReportPath}"`
+            : `xdg-open "${lastReportPath}"`;
+          exec(openCmd);
+          output.print(theme.colors.green(`\n✔ Opened ${lastReportPath} in editor.\n`));
+        } catch (openErr) {
+          output.print(theme.colors.yellow(`\nCould not open editor automatically: ${openErr.message}\n`));
+        }
+        continue;
+      }
+
+      if (action === 'switch_model') {
+        const chosenModel = await Select({
+          label: 'Select AI Model for CodeSentry:',
+          options: AI_MODEL_OPTIONS,
+          defaultIndex: Math.max(0, AI_MODEL_OPTIONS.findIndex(m => m.value === currentModel)),
+        });
+
+        if (chosenModel) {
+          auth.saveGlobalConfig({ openrouter_model: chosenModel });
+          if (chosenModel === 'none') {
+            currentNoAi = true;
+            currentModel = 'none';
+            output.print('\n' + formatStatusIndicator({ status: 'warning', label: 'AI analysis disabled. Switching to static inspection only.' }));
+          } else {
+            currentNoAi = false;
+            currentModel = chosenModel;
+            output.print('\n' + formatStatusIndicator({ status: 'online', label: `AI model toggled to: ${theme.colors.cyan(chosenModel)}` }));
+          }
+          output.print(theme.colors.gray('Re-initiating codebase inspection...\n'));
+        }
+      } else if (action === 'rescan') {
+        output.print(theme.colors.gray('Re-initiating codebase inspection...\n'));
+      }
     }
   }
 }

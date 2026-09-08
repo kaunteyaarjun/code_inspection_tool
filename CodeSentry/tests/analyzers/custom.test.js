@@ -5,6 +5,7 @@ const path = require('node:path');
 const { analyzeBugs } = require('../../src/analyzers/custom/bugs');
 const { analyzeEfficiency } = require('../../src/analyzers/custom/efficiency');
 const { analyzeResources } = require('../../src/analyzers/custom/resources');
+const { analyzeSecurity } = require('../../src/analyzers/custom/security');
 
 const FIXTURES = path.join(__dirname, '..', 'fixtures');
 
@@ -59,6 +60,15 @@ describe('Custom Analyzers', () => {
       const findings = analyzeBugs('bugs/duplicate-condition.js', content);
       const dupes = findings.filter(f => f.rule === 'duplicate-condition');
       assert.ok(dupes.length > 0, 'should detect duplicate conditions');
+    });
+
+    it('should detect Python assignment in condition and off-by-one', () => {
+      const content = readFixture('bugs', 'py-bugs.py');
+      const findings = analyzeBugs('bugs/py-bugs.py', content);
+      const assignment = findings.filter(f => f.rule === 'assignment-in-condition');
+      assert.ok(assignment.length >= 2, 'should detect Python assignment in condition');
+      const offByOne = findings.filter(f => f.rule === 'off-by-one');
+      assert.ok(offByOne.length > 0, 'should detect Python off-by-one');
     });
 
     it('should not crash on clean code', () => {
@@ -136,6 +146,59 @@ describe('Custom Analyzers', () => {
       const findings = analyzeResources('resources/unbounded-cache.js', content);
       const cache = findings.filter(f => f.rule === 'unbounded-cache');
       assert.ok(cache.length > 0, 'should detect unbounded cache');
+    });
+  });
+
+  describe('Security Analyzer', () => {
+    it('should detect SQL injection in JavaScript', () => {
+      const content = readFixture('security', 'js-sqli.js');
+      const findings = analyzeSecurity('security/js-sqli.js', content);
+      const sqli = findings.filter(f => f.category === 'security' && f.rule.includes('sql-injection'));
+      assert.ok(sqli.length > 0, 'should detect SQL injection');
+      assert.equal(sqli[0].severity, 'BLOCKER');
+    });
+
+    it('should detect eval code injection', () => {
+      const content = readFixture('security', 'js-eval.js');
+      const findings = analyzeSecurity('security/js-eval.js', content);
+      const ev = findings.filter(f => f.rule === 'code-injection-eval');
+      assert.ok(ev.length > 0, 'should detect eval injection');
+      assert.equal(ev[0].severity, 'BLOCKER');
+    });
+
+    it('should detect command injection', () => {
+      const content = readFixture('security', 'js-command-inj.js');
+      const findings = analyzeSecurity('security/js-command-inj.js', content);
+      const cmd = findings.filter(f => f.rule === 'command-injection');
+      assert.ok(cmd.length > 0, 'should detect command injection');
+    });
+
+    it('should detect path traversal', () => {
+      const content = readFixture('security', 'js-path-traversal.js');
+      const findings = analyzeSecurity('security/js-path-traversal.js', content);
+      const pt = findings.filter(f => f.rule === 'path-traversal');
+      assert.ok(pt.length > 0, 'should detect path traversal');
+    });
+
+    it('should detect hardcoded secrets', () => {
+      const content = readFixture('security', 'js-hardcoded.js');
+      const findings = analyzeSecurity('security/js-hardcoded.js', content);
+      const sec = findings.filter(f => f.rule.includes('hardcoded'));
+      assert.ok(sec.length > 0, 'should detect hardcoded secrets');
+    });
+
+    it('should detect Python SQL injection', () => {
+      const content = readFixture('security', 'py-sqli.py');
+      const findings = analyzeSecurity('security/py-sqli.py', content);
+      const sqli = findings.filter(f => f.rule.includes('sql-injection'));
+      assert.ok(sqli.length > 0, 'should detect Python SQL injection');
+    });
+
+    it('should detect Python eval and exec', () => {
+      const content = readFixture('security', 'py-eval.py');
+      const findings = analyzeSecurity('security/py-eval.py', content);
+      const ev = findings.filter(f => f.rule === 'py-code-injection');
+      assert.ok(ev.length > 0, 'should detect Python eval');
     });
   });
 

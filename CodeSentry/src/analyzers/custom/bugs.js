@@ -83,7 +83,10 @@ function checkSwallowedError(line, lineNum, findings, filePath) {
 }
 
 function checkAssignmentInCondition(line, lineNum, findings, filePath) {
-  const patterns = [
+  const isPy = (filePath || '').endsWith('.py') || (filePath || '').endsWith('.pyw');
+  const patterns = isPy ? [
+    /(?:if|elif|while)\s+[a-zA-Z_]\w*\s*=[^=!<>\n:]+/,
+  ] : [
     /if\s*\(\s*[a-zA-Z_$][a-zA-Z0-9_$]*\s*=[^=!]/,
     /while\s*\(\s*[a-zA-Z_$][a-zA-Z0-9_$]*\s*=[^=!]/,
     /if\s*\(\s*\([^)]*\b[a-zA-Z_$][a-zA-Z0-9_$]*\s*=[^=!]/,
@@ -91,15 +94,16 @@ function checkAssignmentInCondition(line, lineNum, findings, filePath) {
 
   for (const pattern of patterns) {
     if (pattern.test(line)) {
+      const eqSym = isPy ? '==' : '===';
       findings.push({
         file: filePath,
         line: lineNum,
         column: null,
         rule: 'assignment-in-condition',
-        message: 'Assignment in condition — likely should be comparison (===)',
+        message: `Assignment in condition — likely should be comparison (${eqSym})`,
         severity: 'HIGH',
         category: 'bugs',
-        suggestedFix: 'Use === for comparison, or move assignment outside the condition.',
+        suggestedFix: `Use ${eqSym} for comparison, or move assignment outside the condition.`,
       });
       return;
     }
@@ -132,6 +136,7 @@ function checkOffByOne(line, lineNum, findings, filePath) {
   const patterns = [
     /for\s*\([^)]*<=\s*(?:arr|items|data|results|list|elements|values|array)\.length/,
     /for\s*\([^)]*<=\s*(?:str|string|text|input|buffer)\.length/,
+    /range\s*\(\s*(?:0\s*,\s*)?len\s*\([^)]+\)\s*\+\s*1\s*\)/,
   ];
 
   for (const pattern of patterns) {
@@ -141,10 +146,10 @@ function checkOffByOne(line, lineNum, findings, filePath) {
         line: lineNum,
         column: null,
         rule: 'off-by-one',
-        message: 'Possible off-by-one: loop uses <= with .length, causing out-of-bounds access',
+        message: 'Potential off-by-one loop boundary error',
         severity: 'HIGH',
         category: 'bugs',
-        suggestedFix: 'Use < instead of <= when iterating by index up to .length.',
+        suggestedFix: 'Check loop boundary condition (use < length or range(len(...))).',
       });
       return;
     }
