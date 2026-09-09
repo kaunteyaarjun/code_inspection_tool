@@ -45,9 +45,21 @@ const { scan } = require(path.join(packageRoot, 'src', 'core', 'scan'));
 // ── AI Model Catalog for Interactive Selection ──────────────────────────────
 const AI_MODEL_OPTIONS = [
   {
+    label: 'MiniMax M3 (minimax/minimax-m3)',
+    value: 'minimax/minimax-m3',
+    badge: 'RECOMMENDED',
+    description: 'Premier code reasoning & automated repair model with high precision synthesis',
+  },
+  {
+    label: 'DeepSeek V3 (deepseek/deepseek-chat)',
+    value: 'deepseek/deepseek-chat',
+    badge: 'POPULAR',
+    description: 'High-precision automated code repair and vulnerability remediation',
+  },
+  {
     label: 'Laguna S 2.1 (poolside/laguna-s-2.1:free)',
     value: 'poolside/laguna-s-2.1:free',
-    badge: 'RECOMMENDED',
+    badge: 'FASTEST',
     description: 'Ultra-fast, accurate coding reasoning and DevSecOps triage',
   },
   {
@@ -387,25 +399,59 @@ async function main() {
       });
 
       if (action === 'apply_improvements') {
+        const securityFindings = result.findings.filter(f => f.category === 'security');
+        const bugFindings = result.findings.filter(f => f.category === 'bugs');
+        const otherFindings = result.findings.filter(f => f.category !== 'security' && f.category !== 'bugs');
+
         const scopeOptions = [
           {
-            label: 'Correct entire codebase (All findings)',
+            label: 'Batch fix all categories (Entire codebase)',
             value: 'whole_codebase',
             badge: 'ALL',
-            description: `Batch correct all ${result.findings.length} security flaws and bugs across codebase`,
+            description: `Batch correct all ${result.findings.length} auto-repairable flaws across all categories`,
           },
+        ];
+
+        if (bugFindings.length > 0) {
+          scopeOptions.push({
+            label: `Batch resolve all Code Bugs (${bugFindings.length} findings)`,
+            value: 'resolve_bugs',
+            badge: 'BUGS',
+            description: 'Batch fix logic bugs, empty catch blocks, race conditions, type & boundary errors',
+          });
+        }
+
+        if (securityFindings.length > 0) {
+          scopeOptions.push({
+            label: `Batch resolve all Security Flaws (${securityFindings.length} findings)`,
+            value: 'resolve_security',
+            badge: 'SECURITY',
+            description: 'Batch fix injection attacks, hardcoded secrets, weak hashes, unsafe configs',
+          });
+        }
+
+        if (otherFindings.length > 0) {
+          scopeOptions.push({
+            label: `Batch resolve Efficiency & Resource issues (${otherFindings.length} findings)`,
+            value: 'resolve_other',
+            badge: 'PERF',
+            description: 'Batch fix performance bottlenecks, sync I/O in async, unclosed resources',
+          });
+        }
+
+        scopeOptions.push(
           {
-            label: 'Correct specific bug or security flaw',
+            label: 'Select specific flaw to preview and fix interactively',
             value: 'specific_bug',
             badge: 'SPECIFIC',
-            description: 'Filter by flaw type (Bugs vs Security) and select individual items to correct',
+            description: 'Inspect individual finding with diff preview before applying',
           },
           {
             label: '← Back to Main Menu',
             value: 'back',
             description: 'Return to previous menu',
-          },
-        ];
+          }
+        );
 
         const scope = await Select({
           label: 'Select Fix Scope:',
@@ -417,33 +463,111 @@ async function main() {
           continue;
         }
 
-        if (scope === 'whole_codebase') {
-          output.print('\n' + formatStatusIndicator({ status: 'online', label: 'Applying improvements across entire codebase...' }));
+        // Prepare AI client if enabled
+        let aiClient = null;
+        if (!currentNoAi) {
+          try {
+            const { createAIClient } = require('../src/analyzers/ai/client');
+            aiClient = createAIClient({ model: currentModel });
+          } catch {}
+        }
+
+        if (scope === 'whole_codebase' || scope === 'resolve_bugs' || scope === 'resolve_security' || scope === 'resolve_other') {
+          let targetPool = result.findings;
+          let scopeLabel = 'entire codebase';
+          if (scope === 'resolve_bugs') {
+            targetPool = bugFindings;
+            scopeLabel = 'Code Bugs';
+          } else if (scope === 'resolve_security') {
+            targetPool = securityFindings;
+            scopeLabel = 'Security Flaws';
+          } else if (scope === 'resolve_other') {
+            targetPool = otherFindings;
+            scopeLabel = 'Efficiency & Resources';
+          }
+
+          output.print('\n' + formatStatusIndicator({ status: 'online', label: `Applying improvements for ${scopeLabel} (${targetPool.length} findings)...` }));
+
+          // Group findings by file for consolidated single-pass repair
+          const findingsByFile = new Map();
+          for (const f of targetPool) {
+            const fileKey = f.file || 'unknown';
+            if (!findingsByFile.has(fileKey)) {
+              findingsByFile.set(fileKey, []);
+            }
+            findingsByFile.get(fileKey).push(f);
+          }
+
           let appliedCount = 0;
-          for (const finding of result.findings) {
-            const fix = await fixer.generateFix(parsed.projectPath, finding, { noAi: currentNoAi });
-            if (fix && fix.oldSnippet && fix.newSnippet) {
-              const res = fixer.applyFixToFile(parsed.projectPath, finding, fix);
-              if (res.success) {
-                appliedCount++;
-                output.print(`  ${theme.colors.green('✔')} Corrected ${theme.colors.cyan(finding.file)}${finding.line ? `:${finding.line}` : ''} — ${theme.colors.gray(finding.rule || finding.message)}`);
+          let skippedCount = 0;
+          let failedCount = 0;
+
+          for (const [filePath, fileFindings] of findingsByFile.entries()) {
+            output.print(`\n  ${theme.colors.cyan('➔')} Processing ${theme.colors.brightWhite(filePath)} (${fileFindings.length} issues)...`);
+
+            const batchResult = await fixer.batchFixFile(parsed.projectPath, filePath, fileFindings, {
+              aiClient,
+              noAi: currentNoAi,
+              preferredModel: currentModel,
+              onModelSwitch: ({ failedModel, nextModel, error, isTokenExpire }) => {
+                let reason = 'Model error';
+                if (/free-models-per-day/i.test(error || '')) {
+                  reason = 'Free daily account limit reached on OpenRouter';
+                } else if (/use this slug instead/i.test(error || '')) {
+                  reason = 'Free slug retired by OpenRouter, using standard model';
+                } else if (/timed out/i.test(error || '')) {
+                  reason = 'Request timed out';
+                } else if (isTokenExpire) {
+                  reason = 'Token limit or quota exhausted';
+                }
+                output.print(`    ${theme.colors.yellow('⚡')} ${reason} on ${theme.colors.gray(failedModel)} → Switched to ${theme.colors.cyan(nextModel)}`);
+              },
+            });
+
+            if (batchResult.error) {
+              failedCount += fileFindings.length;
+              output.print(`    ${theme.colors.red('✘')} Failed ${theme.colors.cyan(filePath)} — ${theme.colors.gray(batchResult.error)}`);
+              continue;
+            }
+
+            if (batchResult.applied.length > 0) {
+              appliedCount += batchResult.applied.length;
+              const modelTag = batchResult.modelUsed
+                ? (batchResult.switchedFrom
+                    ? theme.colors.yellow(` [switched: ${batchResult.modelUsed}]`)
+                    : theme.colors.cyan(` [via ${batchResult.modelUsed}]`))
+                : theme.colors.green(' [deterministic rule]');
+
+              output.print(`    ${theme.colors.green('✔')} Resolved ${batchResult.applied.length}/${fileFindings.length} issues in ${theme.colors.brightWhite(filePath)}${modelTag}`);
+              for (const item of batchResult.applied) {
+                const desc = item.fix.explanation || item.finding?.message || 'Fixed issue';
+                output.print(`      ${theme.colors.green('•')} ${theme.colors.gray(desc)}`);
+              }
+            }
+
+            if (batchResult.skipped.length > 0) {
+              skippedCount += batchResult.skipped.length;
+              if (batchResult.applied.length === 0) {
+                output.print(`    ${theme.colors.yellow('⊘')} Skipped ${batchResult.skipped.length} issues in ${theme.colors.brightWhite(filePath)} — no auto-fix available`);
+              } else {
+                output.print(`    ${theme.colors.yellow('⊘')} ${batchResult.skipped.length} issue(s) remain in ${theme.colors.brightWhite(filePath)} requiring manual review`);
               }
             }
           }
-          output.print('\n' + formatStatusIndicator({
-            status: 'online',
-            label: `Applied improvements to ${appliedCount} issue(s) across codebase.\n`,
+          output.print('');
+          output.print(formatStatusIndicator({
+            status: appliedCount > 0 ? 'online' : 'warning',
+            label: `Fix Summary: ${theme.colors.green(appliedCount + ' applied')}${skippedCount > 0 ? `, ${theme.colors.yellow(skippedCount + ' skipped')}` : ''}${failedCount > 0 ? `, ${theme.colors.red(failedCount + ' failed')}` : ''}`,
           }));
-          output.print(theme.colors.gray('Re-initiating scan to verify fixes...\n'));
+          if (appliedCount > 0) {
+            output.print(theme.colors.gray('\nRe-scanning to verify fixes...\n'));
+          } else {
+            output.print(theme.colors.gray('\nNo files were modified.\n'));
+          }
           continue;
         }
 
         if (scope === 'specific_bug') {
-          // Category filter toggle: Security vs Bugs vs All
-          const securityFindings = result.findings.filter(f => f.category === 'security');
-          const bugFindings = result.findings.filter(f => f.category === 'bugs');
-          const otherFindings = result.findings.filter(f => f.category !== 'security' && f.category !== 'bugs');
-
           const categoryOptions = [];
           if (securityFindings.length > 0) {
             categoryOptions.push({
@@ -529,10 +653,27 @@ async function main() {
           const targetFinding = pool[parseInt(chosenIdxStr, 10)];
           if (targetFinding) {
             output.print('\n' + formatStatusIndicator({ status: 'online', label: 'Generating code improvement...' }));
-            const fix = await fixer.generateFix(parsed.projectPath, targetFinding, { noAi: currentNoAi });
+            const fix = await fixer.generateFix(parsed.projectPath, targetFinding, {
+              aiClient,
+              noAi: currentNoAi,
+              preferredModel: currentModel,
+              onModelSwitch: ({ failedModel, nextModel, error, isTokenExpire }) => {
+                let reason = 'Model error';
+                if (/free-models-per-day/i.test(error || '')) {
+                  reason = 'Free daily account limit reached on OpenRouter';
+                } else if (/use this slug instead/i.test(error || '')) {
+                  reason = 'Free slug retired by OpenRouter, using standard model';
+                } else if (/timed out/i.test(error || '')) {
+                  reason = 'Request timed out';
+                } else if (isTokenExpire) {
+                  reason = 'Token limit or quota exhausted';
+                }
+                output.print(`  ${theme.colors.yellow('⚡')} ${reason} on ${theme.colors.gray(failedModel)} → Switched to ${theme.colors.cyan(nextModel)}`);
+              },
+            });
 
-            if (fix.error) {
-              output.printError(`Failed to generate fix: ${fix.error}\n`);
+            if (!fix || fix.error) {
+              output.printError(`Cannot auto-fix: ${fix?.error || 'no fix rule available for this finding'}\n`);
               continue;
             }
 
@@ -569,12 +710,10 @@ async function main() {
               } else {
                 output.printError(`Failed to apply fix: ${applyRes.error}\n`);
               }
-            } else {
-              output.print('\n' + formatStatusIndicator({ status: 'warning', label: 'Fix cancelled. No files modified.\n' }));
             }
           }
+          continue;
         }
-        continue;
       }
 
       if (action === 'ai_security_suggestions') {

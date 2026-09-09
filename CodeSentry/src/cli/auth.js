@@ -362,9 +362,21 @@ async function handleAuthCommand(options = {}) {
     // Import model catalog from bin or define standard options
     const modelOptions = [
       {
+        label: 'MiniMax M3 (minimax/minimax-m3)',
+        value: 'minimax/minimax-m3',
+        badge: 'RECOMMENDED',
+        description: 'Premier code reasoning & automated repair model with high precision synthesis',
+      },
+      {
+        label: 'DeepSeek V3 (deepseek/deepseek-chat)',
+        value: 'deepseek/deepseek-chat',
+        badge: 'POPULAR',
+        description: 'High-precision automated code repair and vulnerability remediation',
+      },
+      {
         label: 'Laguna S 2.1 (poolside/laguna-s-2.1:free)',
         value: 'poolside/laguna-s-2.1:free',
-        badge: 'RECOMMENDED',
+        badge: 'FASTEST',
         description: 'Ultra-fast, accurate coding reasoning and DevSecOps triage',
       },
       {

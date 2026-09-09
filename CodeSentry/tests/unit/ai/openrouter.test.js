@@ -41,6 +41,7 @@ describe('OpenRouter AI Module', () => {
     });
 
     it('should configure model fallback chain containing preferred free models', () => {
+      assert.ok(MODEL_FALLBACK_CHAIN.includes('minimax/minimax-m3:free'));
       assert.ok(MODEL_FALLBACK_CHAIN.includes('poolside/laguna-s-2.1:free'));
       assert.ok(MODEL_FALLBACK_CHAIN.includes('minimax/minimax-m2.5:free'));
       assert.ok(MODEL_FALLBACK_CHAIN.includes('nvidia/nemotron-3-super-120b-a12b:free'));
@@ -178,6 +179,140 @@ describe('OpenRouter AI Module', () => {
       const parsed = client._parseResponse(mockRawResponse);
       assert.equal(parsed.severity, 'HIGH');
       assert.equal(parsed.explanation, 'Issue in {subblock}');
+    });
+  });
+
+  describe('AI Code Repair and Model Switching', () => {
+    it('should generate code repair in mock mode with MiniMax M3 attribution', async () => {
+      const client = createOpenRouterClient({ mockMode: true });
+      const repair = await client.repairCode({
+        finding: {
+          rule: 'loose-equality',
+          line: 2,
+          message: 'Loose equality (==) used instead of strict equality (===)',
+        },
+        fileContent: 'function test() {\n  if (a == b) return true;\n}',
+        line: 2,
+      });
+
+      assert.ok(repair);
+      assert.equal(repair.oldSnippet, '  if (a == b) return true;');
+      assert.equal(repair.newSnippet, '  if (a === b) return true;');
+      assert.equal(repair.modelUsed, OPENROUTER_MODELS.MINIMAX_M3);
+    });
+
+    it('should correctly parse repair response removing markdown fences', () => {
+      const client = createOpenRouterClient({ mockMode: true });
+      const mockResponse = {
+        choices: [
+          {
+            message: {
+              content: '```json\n{"explanation":"Replaced == with ===","oldSnippet":"x == 1","newSnippet":"x === 1"}\n```',
+            },
+          },
+        ],
+      };
+
+      const parsed = client._parseRepairResponse(mockResponse, 'const test = x == 1;');
+      assert.ok(parsed);
+      assert.equal(parsed.oldSnippet, 'x == 1');
+      assert.equal(parsed.newSnippet, 'x === 1');
+      assert.equal(parsed.explanation, 'Replaced == with ===');
+    });
+
+    it('should execute repairFileBatch in mock mode with MiniMax M3 model attribution', async () => {
+      const client = createOpenRouterClient({ mockMode: true });
+      const fileContent = 'function foo() {\n  if (a == b) return;\n  var x = 1;\n}';
+      const findings = [
+        { file: 'test.js', line: 2, rule: 'loose-equality', message: 'Use ===' },
+        { file: 'test.js', line: 3, rule: 'no-var', message: 'Use const or let' },
+      ];
+
+      const res = await client.repairFileBatch({
+        file: 'test.js',
+        fileContent,
+        findings,
+      });
+
+      assert.ok(res);
+      assert.ok(res.fixes);
+      assert.equal(res.fixes.length, 2);
+      assert.equal(res.modelUsed, OPENROUTER_MODELS.MINIMAX_M3);
+      assert.ok(res.fixes[0].newSnippet.includes('==='));
+      assert.ok(res.fixes[1].newSnippet.includes('const'));
+    });
+
+    it('should correctly parse batch repair JSON response with array or object format', () => {
+      const client = createOpenRouterClient({ mockMode: true });
+      const mockBatchResponse = {
+        choices: [
+          {
+            message: {
+              content: '```json\n{"fixes": [{"explanation": "Fix 1", "oldSnippet": "foo == bar", "newSnippet": "foo === bar"}, {"explanation": "Fix 2", "oldSnippet": "var z = 2", "newSnippet": "const z = 2"}]}\n```',
+            },
+          },
+        ],
+      };
+
+      const fileContent = 'const a = 1;\nif (foo == bar) {\n  var z = 2;\n}';
+      const fixes = client._parseBatchRepairResponse(mockBatchResponse, fileContent);
+      assert.ok(fixes);
+      assert.equal(fixes.length, 2);
+      assert.equal(fixes[0].oldSnippet, 'foo == bar');
+      assert.equal(fixes[0].newSnippet, 'foo === bar');
+      assert.equal(fixes[1].oldSnippet, 'var z = 2');
+      assert.equal(fixes[1].newSnippet, 'const z = 2');
+    });
+
+    it('should switch models and notify onModelSwitch when token limits expire in repairFileBatch', async () => {
+      const client = createOpenRouterClient({ apiKey: 'test-key', mockMode: false });
+      const modelsCalled = [];
+      let switchNotified = null;
+
+      // Mock _callAPI to simulate primary model token expiry, succeeding on fallback
+      client._callAPI = async (messages, model) => {
+        modelsCalled.push(model);
+        if (model === OPENROUTER_MODELS.MINIMAX_M3) {
+          throw new Error('API error 429: Token rate limit reached, please try again later');
+        }
+        return {
+          choices: [
+            {
+              message: {
+                content: JSON.stringify({
+                  fixes: [
+                    {
+                      explanation: 'Fallback model resolved issues',
+                      oldSnippet: 'const x = 1;',
+                      newSnippet: 'const x = 2;',
+                    },
+                  ],
+                }),
+              },
+            },
+          ],
+        };
+      };
+
+      const res = await client.repairFileBatch({
+        file: 'test.js',
+        fileContent: 'const x = 1;\n',
+        findings: [{ line: 1, rule: 'r1', message: 'msg1' }],
+        preferredModel: OPENROUTER_MODELS.MINIMAX_M3,
+        onModelSwitch: (evt) => {
+          switchNotified = evt;
+        },
+      });
+
+      assert.ok(res);
+      assert.ok(res.fixes);
+      assert.equal(res.fixes.length, 1);
+      assert.equal(res.switchedFrom, OPENROUTER_MODELS.MINIMAX_M3);
+      assert.ok(modelsCalled.length >= 2);
+      assert.equal(modelsCalled[0], OPENROUTER_MODELS.MINIMAX_M3);
+      assert.ok(switchNotified);
+      assert.equal(switchNotified.failedModel, OPENROUTER_MODELS.MINIMAX_M3);
+      assert.equal(switchNotified.isTokenExpire, true);
     });
   });
 });
