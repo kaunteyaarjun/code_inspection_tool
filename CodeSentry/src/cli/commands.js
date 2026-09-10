@@ -16,6 +16,9 @@ const OPTIONS = {
   AI_MODEL: '--ai-model',
   NO_REPORT: '--no-report',
   REPORT_FILE: '--report-file',
+  FIX: '--fix',
+  AUTO_FIX: '--auto-fix',
+  YES: '--yes',
   HELP: '--help',
   VERSION: '--version',
 };
@@ -73,6 +76,13 @@ class CommandParser {
         i++;
       } else if (arg === OPTIONS.VERSION) {
         result.command = COMMANDS.VERSION;
+        i++;
+      } else if (arg === OPTIONS.FIX || arg === OPTIONS.AUTO_FIX || arg === '--fix' || arg === '--auto-fix') {
+        result.options.fix = true;
+        i++;
+      } else if (arg === OPTIONS.YES || arg === '-y' || arg === '--yes') {
+        result.options.yes = true;
+        result.options.fix = true;
         i++;
       } else if (arg === OPTIONS.SEVERITY) {
         if (i + 1 < args.length) {
@@ -178,6 +188,8 @@ AI analysis and Markdown report generation are ON by default.
 Options:
   --json              Output results as JSON
   --verbose           Show detailed progress information
+  --fix, --auto-fix   Automatically repair all detected issues across the codebase
+  --yes, -y           Apply all automated fixes without manual approval prompts
   --severity <level>  Filter by severity (BLOCKER, HIGH, MEDIUM, LOW, INFO)
   --category <cat>    Filter by category (security, bugs, efficiency, resources)
   --ai-model <model>  Override the AI model (default: auto-selected)
@@ -189,10 +201,12 @@ Options:
 
 Examples:
   codesentry scan                                    Full scan with AI + report
+  codesentry scan . --fix                            Auto-repair all issues in codebase
+  codesentry scan . --fix --yes                      Auto-repair without any confirmation
   codesentry scan ./my-project                       Scan a specific project
   codesentry scan . --severity high                  Only show high+ findings
   codesentry scan . --category security              Security findings only
-  codesentry scan . --ai-model mimo/mimo-2.5:free    Use a specific model
+  codesentry scan . --ai-model deepseek/deepseek-chat  Use DeepSeek V3 code repair
   codesentry scan . --report-file audit.md           Custom report filename
   codesentry auth                                    Configure or view API credentials
   codesentry model                                   Switch AI model

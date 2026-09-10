@@ -28,7 +28,7 @@ describe('OpenRouter AI Module', () => {
 
     it('should include required top-tier and free models in catalog', () => {
       assert.equal(OPENROUTER_MODELS.LAGUNA_S_2_1, 'poolside/laguna-s-2.1:free');
-      assert.equal(OPENROUTER_MODELS.MINIMAX_M2_5, 'minimax/minimax-m2.5:free');
+      assert.equal(OPENROUTER_MODELS.MINIMAX_M2_5, 'minimax/minimax-m2.5');
       assert.equal(OPENROUTER_MODELS.NEMOTRON_3_SUPER, 'nvidia/nemotron-3-super-120b-a12b:free');
       assert.equal(OPENROUTER_MODELS.MIMO_2_5, 'mimo/mimo-2.5:free');
       assert.equal(OPENROUTER_MODELS.NORTH_MINI_CODE, 'cohere/north-mini-code:free');
@@ -40,12 +40,12 @@ describe('OpenRouter AI Module', () => {
       assert.equal(LAST_RESORT_MODEL, 'openrouter/auto');
     });
 
-    it('should configure model fallback chain containing preferred free models', () => {
-      assert.ok(MODEL_FALLBACK_CHAIN.includes('minimax/minimax-m3:free'));
-      assert.ok(MODEL_FALLBACK_CHAIN.includes('poolside/laguna-s-2.1:free'));
-      assert.ok(MODEL_FALLBACK_CHAIN.includes('minimax/minimax-m2.5:free'));
-      assert.ok(MODEL_FALLBACK_CHAIN.includes('nvidia/nemotron-3-super-120b-a12b:free'));
-      assert.ok(MODEL_FALLBACK_CHAIN.includes('mimo/mimo-2.5:free'));
+    it('should configure model fallback chain containing preferred verified models', () => {
+      assert.ok(MODEL_FALLBACK_CHAIN.includes('minimax/minimax-m3'));
+      assert.ok(MODEL_FALLBACK_CHAIN.includes('deepseek/deepseek-chat'));
+      assert.ok(MODEL_FALLBACK_CHAIN.includes('qwen/qwen-2.5-coder-32b-instruct'));
+      assert.ok(MODEL_FALLBACK_CHAIN.includes('meta-llama/llama-3.3-70b-instruct'));
+      assert.ok(MODEL_FALLBACK_CHAIN.includes('qwen/qwen-2.5-72b-instruct'));
       assert.ok(MODEL_FALLBACK_CHAIN.includes('cohere/north-mini-code:free'));
     });
   });

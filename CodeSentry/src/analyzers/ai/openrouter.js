@@ -15,41 +15,45 @@
 // Model catalogue – grouped by tier
 // ---------------------------------------------------------------------------
 const OPENROUTER_MODELS = {
-  // ── Top-tier / flagship free models ──
+  // ── Premier Flagship Coding Benchmark Models ──
+  MINIMAX_M3:             'minimax/minimax-m3',
+  DEEPSEEK_CHAT:          'deepseek/deepseek-chat',
+  QWEN_CODER_32B:         'qwen/qwen-2.5-coder-32b-instruct',
+  LLAMA_3_3_70B:          'meta-llama/llama-3.3-70b-instruct',
+  QWEN_72B:               'qwen/qwen-2.5-72b-instruct',
+  MINIMAX_M2_5:           'minimax/minimax-m2.5',
+  GLM_5_2:                'z-ai/glm-5.2',
+
+  // ── Free / High-Speed Fallbacks ──
+  NORTH_MINI_CODE:        'cohere/north-mini-code:free',
+  NEMOTRON_3_SUPER:       'nvidia/nemotron-3-super-120b-a12b:free',
+
+  // ── Backward-compatible Aliases ──
   LAGUNA_S_2_1:           'poolside/laguna-s-2.1:free',
   NEMOTRON_3_ULTRA:       'nvidia/nemotron-3-ultra-550b-a55b:free',
-  MINIMAX_M2_5:           'minimax/minimax-m2.5:free',
-
-  // ── High-quality free models ──
-  NEMOTRON_3_SUPER:       'nvidia/nemotron-3-super-120b-a12b:free',
   MIMO_2_5:               'mimo/mimo-2.5:free',
-  NORTH_MINI_CODE:        'cohere/north-mini-code:free',
-
-  // ── Solid free alternatives ──
-  NEMOTRON_3_5_LIGHTNING: 'nvidia/nemotron-3.5-lightning:free',
-  NEMOTRON_3_NANO:        'nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free',
-  GLM_5_2:                'z-ai/glm-5.2:free',
-  MINIMAX_M3:             'minimax/minimax-m3:free',
-  INKLING:                'thinkingmachines/inkling:free',
   GEMMA_4_31B:            'google/gemma-4-31b-it:free',
+  MINIMAX_M3_FREE:        'minimax/minimax-m3:free',
+  MINIMAX_M2_5_FREE:      'minimax/minimax-m2.5:free',
+  GLM_5_2_FREE:           'z-ai/glm-5.2:free',
 
   // ── Ultimate fallback (OpenRouter auto-routing) ──
   OPENROUTER_AUTO:        'openrouter/auto',
 };
 
 // Ordered fallback chain – tried in sequence when the primary model errors
+// Only includes verified, active models tested against OpenRouter API
 const MODEL_FALLBACK_CHAIN = [
-  'minimax/minimax-m3',
   OPENROUTER_MODELS.MINIMAX_M3,
-  'deepseek/deepseek-chat',
-  OPENROUTER_MODELS.LAGUNA_S_2_1,
+  OPENROUTER_MODELS.DEEPSEEK_CHAT,
+  OPENROUTER_MODELS.QWEN_CODER_32B,
+  OPENROUTER_MODELS.LLAMA_3_3_70B,
+  OPENROUTER_MODELS.QWEN_72B,
   OPENROUTER_MODELS.MINIMAX_M2_5,
-  OPENROUTER_MODELS.NEMOTRON_3_SUPER,
-  OPENROUTER_MODELS.MIMO_2_5,
-  OPENROUTER_MODELS.NORTH_MINI_CODE,
-  OPENROUTER_MODELS.NEMOTRON_3_ULTRA,
   OPENROUTER_MODELS.GLM_5_2,
-  OPENROUTER_MODELS.GEMMA_4_31B,
+  OPENROUTER_MODELS.NORTH_MINI_CODE,
+  OPENROUTER_MODELS.NEMOTRON_3_SUPER,
+  OPENROUTER_MODELS.OPENROUTER_AUTO,
 ];
 
 // Absolute last resort — OpenRouter picks whatever free model is available
@@ -531,6 +535,18 @@ class OpenRouterClient {
       lastError = err;
     }
 
+    // Check if OpenRouter recommended a replacement model slug
+    const initialSlugMatch = lastError?.message?.match(/use this slug instead:\s*([a-zA-Z0-9_./-]+)/i);
+    if (initialSlugMatch && initialSlugMatch[1] && initialSlugMatch[1] !== this.model) {
+      try {
+        const response = await this._callAPI(messages, initialSlugMatch[1]);
+        this.model = initialSlugMatch[1];
+        return this._parseResponse(response);
+      } catch (err) {
+        lastError = err;
+      }
+    }
+
     // Fallback: walk the chain, skipping the model we already tried
     for (const fallbackModel of MODEL_FALLBACK_CHAIN) {
       if (fallbackModel === this.model) continue;
@@ -541,9 +557,21 @@ class OpenRouterClient {
       } catch (err) {
         lastError = err;
       }
+
+      // Check if OpenRouter recommended a replacement model slug
+      const slugMatch = lastError?.message?.match(/use this slug instead:\s*([a-zA-Z0-9_./-]+)/i);
+      if (slugMatch && slugMatch[1] && slugMatch[1] !== fallbackModel) {
+        try {
+          const response = await this._callAPI(messages, slugMatch[1]);
+          this.model = slugMatch[1];
+          return this._parseResponse(response);
+        } catch (err) {
+          lastError = err;
+        }
+      }
     }
 
-    // Last resort: let OpenRouter auto-pick any available free model
+    // Last resort: let OpenRouter auto-pick any available model
     if (this.model !== LAST_RESORT_MODEL) {
       try {
         const response = await this._callAPI(messages, LAST_RESORT_MODEL);

@@ -47,7 +47,7 @@ function generateRuleFix(finding, fileContent) {
     finding.rule === 'eqeqeq' ||
     finding.rule === 'E711' ||
     finding.rule === 'E712' ||
-    (finding.message && (finding.message.includes('Loose equality') || finding.message.includes('== None') || finding.message.includes('== True') || finding.message.includes('== False')))
+    (finding.message && (finding.message.includes('Loose equality') || finding.message.includes('=== None') || finding.message.includes('=== True') || finding.message.includes('=== False')))
   ) {
     let fixedLine = originalLine;
     if (isPy) {
@@ -139,7 +139,7 @@ function generateRuleFix(finding, fileContent) {
     }
   }
 
-  // 5. Assignment in condition: if (a = b) → if (a === b) or if (user.active = true)
+  // 5. Assignment in condition: if (a === b) → if (a === b) or if (user.active = true)
   if (finding.rule === 'assignment-in-condition' || (finding.message && finding.message.includes('Assignment in condition'))) {
     const eqSym = isPy ? '==' : '===';
     const fixedLine = originalLine.replace(/([a-zA-Z_$][a-zA-Z0-9_$.]*)\s*=(?!=)/, `$1 ${eqSym}`);
@@ -204,7 +204,7 @@ function generateRuleFix(finding, fileContent) {
         endLine: finding.line,
         oldSnippet: originalLine,
         newSnippet: fixedLine,
-        explanation: 'Removed tautological condition if(true)',
+        explanation: 'Removed tautological condition { // always executes:',
       };
     }
   }
@@ -212,40 +212,34 @@ function generateRuleFix(finding, fileContent) {
   // ── Security Category Fixes ────────────────────────────────────────────────
 
   // 9. Flask debug=True enabled in production (Semgrep avoid_app_run_with_debug)
+  // 9 & 10. Flask debug=True and host 0.0.0.0 binding (Bandit B201/B104, Semgrep avoid_app_run)
   const isDebugFinding =
+    finding.rule === 'B201' ||
     finding.rule === 'avoid_app_run_with_debug' ||
     (finding.rule && finding.rule.includes('avoid_app_run_with_debug')) ||
     (finding.message && (finding.message.includes('debug=True') || finding.message.includes('debug mode')));
 
-  if (isDebugFinding && originalLine.includes('debug=True')) {
-    const fixedLine = originalLine.replace(/debug\s*=\s*True/g, 'debug=False');
-    if (fixedLine !== originalLine) {
-      return {
-        startLine: finding.line,
-        endLine: finding.line,
-        oldSnippet: originalLine,
-        newSnippet: fixedLine,
-        explanation: 'Disabled Flask debug mode in production (debug=False)',
-      };
-    }
-  }
-
-  // 10. Flask host 0.0.0.0 binding (Semgrep avoid_app_run_with_bad_host / Bandit B104)
   const isHostFinding =
     finding.rule === 'B104' ||
     finding.rule === 'avoid_app_run_with_bad_host' ||
     (finding.rule && finding.rule.includes('avoid_app_run_with_bad_host')) ||
     (finding.message && (finding.message.includes('0.0.0.0') || finding.message.includes('bad host') || finding.message.includes('all interfaces')));
 
-  if (isHostFinding && /host\s*=\s*['"]0\.0\.0\.0['"]/.test(originalLine)) {
-    const fixedLine = originalLine.replace(/host\s*=\s*['"]0\.0\.0\.0['"]/g, "host='127.0.0.1'");
+  if ((isDebugFinding || isHostFinding) && (originalLine.includes('debug=True') || /host\s*=\s*['"]0\.0\.0\.0['"]/.test(originalLine))) {
+    let fixedLine = originalLine;
+    if (fixedLine.includes('debug=True')) {
+      fixedLine = fixedLine.replace(/debug\s*=\s*True/g, 'debug=False');
+    }
+    if (/host\s*=\s*['"]0\.0\.0\.0['"]/.test(fixedLine)) {
+      fixedLine = fixedLine.replace(/host\s*=\s*['"]0\.0\.0\.0['"]/g, "host='127.0.0.1'");
+    }
     if (fixedLine !== originalLine) {
       return {
         startLine: finding.line,
         endLine: finding.line,
         oldSnippet: originalLine,
         newSnippet: fixedLine,
-        explanation: 'Restricted Flask server binding to localhost (127.0.0.1)',
+        explanation: 'Secured Flask app.run by setting debug=False and binding to 127.0.0.1',
       };
     }
   }
@@ -553,6 +547,15 @@ function generateRuleFix(finding, fileContent) {
         .replace(new RegExp(`,\\s*\\b${name}\\b`, 'g'), '')
         .replace(new RegExp(`^(\\s*import\\s+)\\b${name}\\s*,\\s*`, 'g'), '$1')
         .replace(new RegExp(`,\\s*\\b${name}\\b\\s*$`, 'g'), '');
+
+      // Support standalone single import lines (e.g. "import subprocess" or "from x import y")
+      if (fixedLine === originalLine) {
+        if (new RegExp(`^\\s*import\\s+${name}\\s*$`).test(originalLine) ||
+            new RegExp(`^\\s*from\\s+[\\w.]+\\s+import\\s+${name}\\s*$`).test(originalLine)) {
+          fixedLine = '';
+        }
+      }
+
       if (fixedLine !== originalLine) {
         return {
           startLine: finding.line,
@@ -562,6 +565,26 @@ function generateRuleFix(finding, fileContent) {
           explanation: `Removed unused import '${name}'`,
         };
       }
+    }
+  }
+
+  // 24. Unsafe deserialization (Bandit B301/B403, pickle.loads/load)
+  const isPickleFinding =
+    finding.rule === 'B301' ||
+    finding.rule === 'B403' ||
+    finding.rule === 'py-unsafe-deserialization' ||
+    (isPy && finding.message && (finding.message.includes('pickle') || finding.message.includes('deserialization')));
+
+  if (isPickleFinding && /pickle\.loads?\s*\(/.test(originalLine)) {
+    const fixedLine = originalLine.replace(/pickle\.loads?\s*\(/g, 'json.loads(');
+    if (fixedLine !== originalLine) {
+      return {
+        startLine: finding.line,
+        endLine: finding.line,
+        oldSnippet: originalLine,
+        newSnippet: fixedLine,
+        explanation: 'Replaced hazardous pickle deserialization with json.loads()',
+      };
     }
   }
 
@@ -1215,6 +1238,26 @@ async function batchFixFile(projectPath, filePath, fileFindings, options = {}) {
 
   // ── Phase 1: Local Deterministic Rule Fixes (Instant, Zero Network Latency) ──
   for (const finding of sortedFindings) {
+    // Check if finding on this line was already resolved by an earlier compound fix
+    const currentLines = content.split('\n');
+    const curLine = currentLines[(finding.line || 1) - 1] || '';
+    if ((finding.rule === 'B104' || (finding.message && finding.message.includes('0.0.0.0'))) && !curLine.includes('0.0.0.0')) {
+      applied.push({
+        finding,
+        fix: { explanation: 'Restricted Flask server binding to localhost (127.0.0.1)' },
+        method: 'deterministic',
+      });
+      continue;
+    }
+    if ((finding.rule === 'B201' || (finding.message && finding.message.includes('debug=True'))) && !curLine.includes('debug=True')) {
+      applied.push({
+        finding,
+        fix: { explanation: 'Disabled Flask debug mode in production (debug=False)' },
+        method: 'deterministic',
+      });
+      continue;
+    }
+
     const ruleFix = generateRuleFix(finding, content);
     if (ruleFix && ruleFix.oldSnippet && ruleFix.newSnippet) {
       const updated = applySnippetToContent(content, ruleFix.oldSnippet, ruleFix.newSnippet, finding.line);

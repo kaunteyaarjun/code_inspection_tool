@@ -57,35 +57,38 @@ const AI_MODEL_OPTIONS = [
     description: 'High-precision automated code repair and vulnerability remediation',
   },
   {
-    label: 'Laguna S 2.1 (poolside/laguna-s-2.1:free)',
-    value: 'poolside/laguna-s-2.1:free',
-    badge: 'FASTEST',
-    description: 'Ultra-fast, accurate coding reasoning and DevSecOps triage',
+    label: 'Qwen 2.5 Coder 32B (qwen/qwen-2.5-coder-32b-instruct)',
+    value: 'qwen/qwen-2.5-coder-32b-instruct',
+    badge: '#1 CODING',
+    description: 'Top-ranking open coding benchmark model (92.7% HumanEval)',
   },
   {
-    label: 'Nemotron 3 Ultra (nvidia/nemotron-3-ultra-550b-a55b:free)',
-    value: 'nvidia/nemotron-3-ultra-550b-a55b:free',
-    badge: '550B PARAMS',
-    description: 'Heavyweight reasoning for complex multi-file architectural exploits',
+    label: 'Llama 3.3 70B (meta-llama/llama-3.3-70b-instruct)',
+    value: 'meta-llama/llama-3.3-70b-instruct',
+    badge: '70B PARAMS',
+    description: 'State-of-the-art open reasoning and multi-turn refactoring',
   },
   {
-    label: 'MiniMax M2.5 (minimax/minimax-m2.5:free)',
-    value: 'minimax/minimax-m2.5:free',
+    label: 'Qwen 2.5 72B (qwen/qwen-2.5-72b-instruct)',
+    value: 'qwen/qwen-2.5-72b-instruct',
+    badge: '72B PARAMS',
+    description: 'Deep polyglot code reasoning and architectural analysis',
+  },
+  {
+    label: 'MiniMax M2.5 (minimax/minimax-m2.5)',
+    value: 'minimax/minimax-m2.5',
+    badge: 'FAST',
     description: 'High-speed balanced code inspection and remediation diffs',
   },
   {
-    label: 'Nemotron 3 Super (nvidia/nemotron-3-super-120b-a12b:free)',
-    value: 'nvidia/nemotron-3-super-120b-a12b:free',
-    description: 'Accurate syntax and vulnerability detection across polyglot stacks',
+    label: 'GLM 5.2 (z-ai/glm-5.2)',
+    value: 'z-ai/glm-5.2',
+    description: 'High-performance general reasoning and code triage',
   },
   {
-    label: 'Mimo 2.5 (mimo/mimo-2.5:free)',
-    value: 'mimo/mimo-2.5:free',
-    description: 'Lightweight specialized code inspection model',
-  },
-  {
-    label: 'North Mini Code (cohere/north-mini-code:free)',
+    label: 'Cohere North Mini Code (cohere/north-mini-code:free)',
     value: 'cohere/north-mini-code:free',
+    badge: 'FREE',
     description: 'Fast Cohere-optimized code structure analysis',
   },
   {
@@ -163,13 +166,13 @@ async function main() {
         try {
           auth.saveGlobalConfig({ openrouter_model: chosen });
           const envPath = path.resolve(process.cwd(), '.env');
-          let envContent = fs.existsSync(envPath) ? fs.readFileSync(envPath, 'utf8') : '';
+          let envContent = await fs.promises.access(envPath) ? await fs.promises.readFile(envPath, 'utf8') : '';
           if (/^OPENROUTER_MODEL=.*$/m.test(envContent)) {
             envContent = envContent.replace(/^OPENROUTER_MODEL=.*$/m, `OPENROUTER_MODEL=${chosen}`);
           } else {
             envContent = envContent.trim() ? `${envContent.trim()}\nOPENROUTER_MODEL=${chosen}\n` : `OPENROUTER_MODEL=${chosen}\n`;
           }
-          fs.writeFileSync(envPath, envContent, 'utf8');
+          await fs.promises.writeFile(envPath, envContent, 'utf8');
           output.print(theme.colors.gray(`  Saved preference globally to ~/.codesentry/config.json`));
         } catch {}
       }
@@ -340,6 +343,97 @@ async function main() {
         lastExitCode = 2;
       }
 
+      // ── Automated Repair (--fix / --yes) without manual approval ──────────
+      if ((parsed.options.fix || parsed.options.yes) && result && result.findings && result.findings.length > 0) {
+        output.print('\n' + formatStatusIndicator({
+          status: 'online',
+          label: `Auto-repair triggered (--fix): Repairing all ${result.findings.length} findings without manual approval...`,
+        }));
+
+        let aiClient = null;
+        if (!currentNoAi) {
+          try {
+            const { createAIClient } = require(path.join(packageRoot, 'src', 'analyzers', 'ai', 'client'));
+            aiClient = createAIClient({ model: currentModel });
+          } catch {}
+        }
+
+        const findingsByFile = new Map();
+        for (const f of result.findings) {
+          const fileKey = f.file || 'unknown';
+          if (!findingsByFile.has(fileKey)) {
+            findingsByFile.set(fileKey, []);
+          }
+          findingsByFile.get(fileKey).push(f);
+        }
+
+        let appliedCount = 0;
+        let skippedCount = 0;
+        let failedCount = 0;
+
+        for (const [filePath, fileFindings] of findingsByFile.entries()) {
+          output.print(`\n  ${theme.colors.cyan('➔')} Processing ${theme.colors.brightWhite(filePath)} (${fileFindings.length} issues)...`);
+
+          const batchResult = await fixer.batchFixFile(parsed.projectPath, filePath, fileFindings, {
+            aiClient,
+            noAi: currentNoAi,
+            preferredModel: currentModel,
+            onModelSwitch: ({ failedModel, nextModel, error, isTokenExpire }) => {
+              let reason = 'Model error';
+              if (/free-models-per-day/i.test(error || '')) {
+                reason = 'Free daily account limit reached on OpenRouter';
+              } else if (/use this slug instead/i.test(error || '')) {
+                reason = 'Free slug retired by OpenRouter, using standard model';
+              } else if (/timed out/i.test(error || '')) {
+                reason = 'Request timed out';
+              } else if (isTokenExpire) {
+                reason = 'Token limit or quota exhausted';
+              }
+              output.print(`    ${theme.colors.yellow('⚡')} ${reason} on ${theme.colors.gray(failedModel)} → Switched to ${theme.colors.cyan(nextModel)}`);
+            },
+          });
+
+          if (batchResult.error) {
+            failedCount += fileFindings.length;
+            output.print(`    ${theme.colors.red('✘')} Failed ${theme.colors.cyan(filePath)} — ${theme.colors.gray(batchResult.error)}`);
+            continue;
+          }
+
+          if (batchResult.applied.length > 0) {
+            appliedCount += batchResult.applied.length;
+            const modelTag = batchResult.modelUsed
+              ? (batchResult.switchedFrom
+                  ? theme.colors.yellow(` [switched: ${batchResult.modelUsed}]`)
+                  : theme.colors.cyan(` [via ${batchResult.modelUsed}]`))
+              : theme.colors.green(' [deterministic rule]');
+
+            output.print(`    ${theme.colors.green('✔')} Resolved ${batchResult.applied.length}/${fileFindings.length} issues in ${theme.colors.brightWhite(filePath)}${modelTag}`);
+            for (const item of batchResult.applied) {
+              const desc = item.fix?.explanation || item.finding?.message || 'Fixed issue';
+              output.print(`      ${theme.colors.green('•')} ${theme.colors.gray(desc)}`);
+            }
+          }
+
+          if (batchResult.skipped.length > 0) {
+            skippedCount += batchResult.skipped.length;
+            output.print(`    ${theme.colors.yellow('⊘')} ${batchResult.skipped.length} issue(s) remain in ${theme.colors.brightWhite(filePath)} requiring manual review`);
+          }
+        }
+
+        output.print('\n' + formatStatusIndicator({
+          status: appliedCount > 0 ? 'online' : 'warning',
+          label: `Fix Summary: ${theme.colors.green(appliedCount + ' applied')}${skippedCount > 0 ? `, ${theme.colors.yellow(skippedCount + ' skipped')}` : ''}${failedCount > 0 ? `, ${theme.colors.red(failedCount + ' failed')}` : ''}`,
+        }));
+
+        parsed.options.fix = false;
+        parsed.options.yes = false;
+
+        if (appliedCount > 0) {
+          output.print(theme.colors.gray('\nRe-scanning codebase to verify fixes...\n'));
+          continue;
+        }
+      }
+
       // Non-interactive or JSON mode exits immediately (e.g. CI/CD or automation)
       const isInteractive = Boolean(process.stdout.isTTY && process.stdin.isTTY && !jsonMode);
       if (!isInteractive) {
@@ -353,10 +447,10 @@ async function main() {
 
       if (result && result.findings && result.findings.length > 0) {
         actionOptions.push({
-          label: `Apply AI Improvements / Fixes (${result.findings.length} findings available)`,
+          label: `Auto-Fix All Issues (Zero manual confirmation required: ${result.findings.length} findings)`,
           value: 'apply_improvements',
-          badge: 'FIX',
-          description: 'Interactively correct security flaws and bugs across your codebase',
+          badge: 'AUTO-FIX',
+          description: 'Batch repair all security flaws and bugs across your codebase without manual approval',
         });
       } else if (result) {
         actionOptions.push({
@@ -405,10 +499,10 @@ async function main() {
 
         const scopeOptions = [
           {
-            label: 'Batch fix all categories (Entire codebase)',
+            label: 'Batch fix all categories (Entire codebase — zero approval required)',
             value: 'whole_codebase',
             badge: 'ALL',
-            description: `Batch correct all ${result.findings.length} auto-repairable flaws across all categories`,
+            description: `Automatically correct all ${result.findings.length} auto-repairable flaws across all categories without manual prompts`,
           },
         ];
 
@@ -490,6 +584,9 @@ async function main() {
 
           // Group findings by file for consolidated single-pass repair
           const findingsByFile = new Map();
+          const MAX_FINDINGSBYFILE_SIZE = 5000;
+          // CodeSentry: eviction guard helper
+          function pruneFindingsByFile() { while (findingsByFile.size > MAX_FINDINGSBYFILE_SIZE) findingsByFile.delete(findingsByFile.keys().next().value); }
           for (const f of targetPool) {
             const fileKey = f.file || 'unknown';
             if (!findingsByFile.has(fileKey)) {

@@ -177,6 +177,32 @@ describe('Fixer Engine', () => {
       assert.equal(fix.newSnippet, 'result = ast.literal_eval(user_input)');
     });
 
+    it('should generate fix for Python unsafe pickle deserialization', () => {
+      const code = 'result = pickle.loads(data)';
+      const finding = {
+        file: 'app.py',
+        rule: 'B301',
+        line: 1,
+        message: 'Pickle and modules that wrap it can be unsafe when used to deserialize untrusted data',
+      };
+      const fix = generateRuleFix(finding, code);
+      assert.ok(fix);
+      assert.equal(fix.newSnippet, 'result = json.loads(data)');
+    });
+
+    it('should simultaneously fix debug=True and host 0.0.0.0 in compound Flask app.run', () => {
+      const code = "app.run(debug=True, host='0.0.0.0')";
+      const finding = {
+        file: 'app.py',
+        rule: 'B201',
+        line: 1,
+        message: 'A Flask app appears to be run with debug=True',
+      };
+      const fix = generateRuleFix(finding, code);
+      assert.ok(fix);
+      assert.equal(fix.newSnippet, "app.run(debug=False, host='127.0.0.1')");
+    });
+
     it('should generate fix for Ruff UP006 deprecated typing generics', () => {
       const code = 'def parse_data(items: List[str]) -> Dict[str, int]:';
       const finding = {

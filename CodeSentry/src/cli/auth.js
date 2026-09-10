@@ -52,9 +52,9 @@ function readGlobalConfig(customPath = null) {
 }
 
 /**
- * Merges updates into the global config JSON file and writes it to disk.
- * Creates the ~/.codesentry directory if it doesn't exist.
- */
+  * Merges updates into the global config JSON file and writes it to disk.
+  * Creates the ~/.codesentry directory if it doesn't exist.
+  */
 function saveGlobalConfig(updates = {}, customPath = null) {
   const filePath = customPath || getGlobalConfigPath();
   const dirPath = path.dirname(filePath);
@@ -374,21 +374,39 @@ async function handleAuthCommand(options = {}) {
         description: 'High-precision automated code repair and vulnerability remediation',
       },
       {
-        label: 'Laguna S 2.1 (poolside/laguna-s-2.1:free)',
-        value: 'poolside/laguna-s-2.1:free',
-        badge: 'FASTEST',
-        description: 'Ultra-fast, accurate coding reasoning and DevSecOps triage',
+        label: 'Qwen 2.5 Coder 32B (qwen/qwen-2.5-coder-32b-instruct)',
+        value: 'qwen/qwen-2.5-coder-32b-instruct',
+        badge: '#1 CODING',
+        description: 'Top-ranking open coding benchmark model (92.7% HumanEval)',
       },
       {
-        label: 'Nemotron 3 Ultra (nvidia/nemotron-3-ultra-550b-a55b:free)',
-        value: 'nvidia/nemotron-3-ultra-550b-a55b:free',
-        badge: '550B PARAMS',
-        description: 'Heavyweight reasoning for complex multi-file architectural exploits',
+        label: 'Llama 3.3 70B (meta-llama/llama-3.3-70b-instruct)',
+        value: 'meta-llama/llama-3.3-70b-instruct',
+        badge: '70B PARAMS',
+        description: 'State-of-the-art open reasoning and multi-turn refactoring',
       },
       {
-        label: 'MiniMax M2.5 (minimax/minimax-m2.5:free)',
-        value: 'minimax/minimax-m2.5:free',
+        label: 'Qwen 2.5 72B (qwen/qwen-2.5-72b-instruct)',
+        value: 'qwen/qwen-2.5-72b-instruct',
+        badge: '72B PARAMS',
+        description: 'Deep polyglot code reasoning and architectural analysis',
+      },
+      {
+        label: 'MiniMax M2.5 (minimax/minimax-m2.5)',
+        value: 'minimax/minimax-m2.5',
+        badge: 'FAST',
         description: 'High-speed balanced code inspection and remediation diffs',
+      },
+      {
+        label: 'GLM 5.2 (z-ai/glm-5.2)',
+        value: 'z-ai/glm-5.2',
+        description: 'High-performance general reasoning and code triage',
+      },
+      {
+        label: 'Cohere North Mini Code (cohere/north-mini-code:free)',
+        value: 'cohere/north-mini-code:free',
+        badge: 'FREE',
+        description: 'Fast Cohere-optimized code structure analysis',
       },
       {
         label: 'Auto (Smart Context-Aware Heuristics)',
