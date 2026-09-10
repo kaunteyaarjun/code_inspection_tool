@@ -5,6 +5,7 @@ const {
   createOpenRouterClient,
   OPENROUTER_MODELS,
   MODEL_FALLBACK_CHAIN,
+  FREE_MODEL_FALLBACK_CHAIN,
   LAST_RESORT_MODEL,
   DEFAULT_MODEL,
   COMPLEX_MODEL,
@@ -30,23 +31,67 @@ describe('OpenRouter AI Module', () => {
       assert.equal(OPENROUTER_MODELS.LAGUNA_S_2_1, 'poolside/laguna-s-2.1:free');
       assert.equal(OPENROUTER_MODELS.MINIMAX_M2_5, 'minimax/minimax-m2.5');
       assert.equal(OPENROUTER_MODELS.NEMOTRON_3_SUPER, 'nvidia/nemotron-3-super-120b-a12b:free');
-      assert.equal(OPENROUTER_MODELS.MIMO_2_5, 'mimo/mimo-2.5:free');
       assert.equal(OPENROUTER_MODELS.NORTH_MINI_CODE, 'cohere/north-mini-code:free');
       assert.equal(OPENROUTER_MODELS.NEMOTRON_3_ULTRA, 'nvidia/nemotron-3-ultra-550b-a55b:free');
       assert.equal(OPENROUTER_MODELS.OPENROUTER_AUTO, 'openrouter/auto');
+    });
+
+    it('should include new ultra-cheap paid models in catalog', () => {
+      assert.equal(OPENROUTER_MODELS.DEEPSEEK_V4_1_FLASH, 'deepseek/deepseek-v4.1-flash');
+      assert.equal(OPENROUTER_MODELS.QWEN_3_8_FLASH, 'qwen/qwen3.8-flash');
+      assert.equal(OPENROUTER_MODELS.QWEN_3_8_MAX, 'qwen/qwen3.8-max-0902');
+      assert.equal(OPENROUTER_MODELS.INCEPTION_MERCURY_2_5, 'inception/mercury-2.5');
+      assert.equal(OPENROUTER_MODELS.GLM_5_3_FLASH, 'z-ai/glm-5.3-flash');
+      assert.equal(OPENROUTER_MODELS.GEMINI_3_8_FLASH, 'google/gemini-3.8-flash');
+      assert.equal(OPENROUTER_MODELS.MUSE_SPARK_CONTRIBUTOR, 'meta/muse-spark-1.3-contributor');
+      assert.equal(OPENROUTER_MODELS.GPT_5_NANO, 'openai/gpt-5-nano');
+      assert.equal(OPENROUTER_MODELS.GPT_OSS_120B, 'openai/gpt-oss-120b');
+      assert.equal(OPENROUTER_MODELS.GRANITE_4_2_8B, 'ibm-granite/granite-4.2-8b');
+    });
+
+    it('should include new free models in catalog', () => {
+      assert.equal(OPENROUTER_MODELS.INKLING, 'thinkingmachines/inkling:free');
+      assert.equal(OPENROUTER_MODELS.INKLING_SMALL, 'thinkingmachines/inkling-small:free');
+      assert.equal(OPENROUTER_MODELS.LAGUNA_XS_2_1, 'poolside/laguna-xs-2.1:free');
+      assert.equal(OPENROUTER_MODELS.GEMMA_4_26B, 'google/gemma-4-26b-a4b-it:free');
+      assert.equal(OPENROUTER_MODELS.DOTS_3_NOTE, 'dots-studio/dots-3-note-preview:free');
+      assert.equal(OPENROUTER_MODELS.LING_3_FLASH_FIN, 'inclusionai/ling-3.0-flash-fin:free');
+      assert.equal(OPENROUTER_MODELS.LING_3_FLASH_SANTE, 'inclusionai/ling-3.0-flash-sante:free');
+    });
+
+    it('should not include dead/retired slugs in catalog', () => {
+      assert.equal(OPENROUTER_MODELS.MIMO_2_5, undefined);
+      assert.equal(OPENROUTER_MODELS.MINIMAX_M3_FREE, undefined);
+      assert.equal(OPENROUTER_MODELS.MINIMAX_M2_5_FREE, undefined);
+      assert.equal(OPENROUTER_MODELS.GLM_5_2_FREE, undefined);
     });
 
     it('should have openrouter/auto as LAST_RESORT_MODEL', () => {
       assert.equal(LAST_RESORT_MODEL, 'openrouter/auto');
     });
 
-    it('should configure model fallback chain containing preferred verified models', () => {
+    it('should configure model fallback chain with 3-tier structure (paid → cheap → free)', () => {
+      // Tier 1: Premier paid
       assert.ok(MODEL_FALLBACK_CHAIN.includes('minimax/minimax-m3'));
       assert.ok(MODEL_FALLBACK_CHAIN.includes('deepseek/deepseek-chat'));
       assert.ok(MODEL_FALLBACK_CHAIN.includes('qwen/qwen-2.5-coder-32b-instruct'));
       assert.ok(MODEL_FALLBACK_CHAIN.includes('meta-llama/llama-3.3-70b-instruct'));
       assert.ok(MODEL_FALLBACK_CHAIN.includes('qwen/qwen-2.5-72b-instruct'));
+      // Tier 2: Ultra-cheap paid
+      assert.ok(MODEL_FALLBACK_CHAIN.includes('deepseek/deepseek-v4.1-flash'));
+      assert.ok(MODEL_FALLBACK_CHAIN.includes('google/gemini-3.8-flash'));
+      assert.ok(MODEL_FALLBACK_CHAIN.includes('openai/gpt-5-nano'));
+      // Tier 3: Free
       assert.ok(MODEL_FALLBACK_CHAIN.includes('cohere/north-mini-code:free'));
+      assert.ok(MODEL_FALLBACK_CHAIN.includes('thinkingmachines/inkling:free'));
+      // Paid models should come before free models in the chain
+      const paidIdx = MODEL_FALLBACK_CHAIN.indexOf('deepseek/deepseek-v4.1-flash');
+      const freeIdx = MODEL_FALLBACK_CHAIN.indexOf('openrouter/free');
+      assert.ok(paidIdx < freeIdx, 'Cheap paid models should precede free models in fallback chain');
+    });
+
+    it('should have at least 35 models in MODEL_FALLBACK_CHAIN for deep resilience', () => {
+      assert.ok(MODEL_FALLBACK_CHAIN.length >= 35, `Expected >= 35 models, got ${MODEL_FALLBACK_CHAIN.length}`);
     });
   });
 
@@ -313,6 +358,47 @@ describe('OpenRouter AI Module', () => {
       assert.ok(switchNotified);
       assert.equal(switchNotified.failedModel, OPENROUTER_MODELS.MINIMAX_M3);
       assert.equal(switchNotified.isTokenExpire, true);
+    });
+
+    it('should configure dedicated FREE_MODEL_FALLBACK_CHAIN with verified zero-cost models', () => {
+      assert.ok(FREE_MODEL_FALLBACK_CHAIN.includes('openrouter/free'));
+      assert.ok(FREE_MODEL_FALLBACK_CHAIN.includes('nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free'));
+      assert.ok(FREE_MODEL_FALLBACK_CHAIN.includes('nex-agi/nex-n2.5-pro:free'));
+      assert.ok(FREE_MODEL_FALLBACK_CHAIN.includes('cohere/north-mini-code:free'));
+      assert.ok(FREE_MODEL_FALLBACK_CHAIN.includes('thinkingmachines/inkling:free'));
+      assert.ok(FREE_MODEL_FALLBACK_CHAIN.includes('poolside/laguna-xs-2.1:free'));
+      assert.ok(FREE_MODEL_FALLBACK_CHAIN.includes('google/gemma-4-26b-a4b-it:free'));
+      assert.ok(FREE_MODEL_FALLBACK_CHAIN.includes('openrouter/auto'));
+      assert.ok(FREE_MODEL_FALLBACK_CHAIN.length >= 18, `Expected >= 18 free models, got ${FREE_MODEL_FALLBACK_CHAIN.length}`);
+    });
+
+    it('should prioritize free models when free tier is requested', async () => {
+      const client = new OpenRouterClient({ apiKey: 'test-key' });
+      let calledModel = null;
+      client._callAPI = async (messages, model) => {
+        calledModel = model;
+        return {
+          choices: [
+            {
+              message: {
+                content: '<think>Analyzing code...</think>```json\n{"fixes": [{"explanation": "ok", "oldSnippet": "let a = 1;", "newSnippet": "const a = 1;"}]}\n```',
+              },
+            },
+          ],
+        };
+      };
+
+      const res = await client.repairFileBatch({
+        file: 'test.js',
+        fileContent: 'let a = 1;\n',
+        findings: [{ line: 1, rule: 'r1', message: 'use const' }],
+        preferredModel: 'free',
+      });
+
+      assert.ok(res);
+      assert.equal(res.fixes.length, 1);
+      assert.equal(calledModel, 'openrouter/free');
+      assert.equal(res.fixes[0].newSnippet, 'const a = 1;');
     });
   });
 });
