@@ -218,6 +218,7 @@ sequenceDiagram
 
 #### Key Capabilities:
 1. **Curated Model Catalog**: Automatically balances speed and reasoning capability using top-tier free models:
+   - `minimax/minimax-m3:free` (Recommended for high-precision code synthesis and automated repair)
    - `poolside/laguna-s-2.1:free` (Default for rapid, precise syntax and logic triage)
    - `nvidia/nemotron-3-ultra-550b-a55b:free` (Complex multi-file and architectural reasoning)
    - `minimax/minimax-m2.5:free` (High-speed fallback)

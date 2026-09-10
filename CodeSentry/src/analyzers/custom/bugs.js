@@ -159,6 +159,7 @@ function checkOffByOne(line, lineNum, findings, filePath) {
 function checkUnreachableCode(line, lines, lineIndex, findings, filePath) {
   const lineNum = lineIndex + 1;
   if (!line || line.startsWith('//') || line.startsWith('/*') || line === '}' || line === '{') return;
+  if (line.startsWith('@') || /^def\s+/.test(line) || /^class\s+/.test(line) || /^function\s+/.test(line)) return;
 
   let prevIndex = lineIndex - 1;
   while (prevIndex >= 0) {
@@ -171,8 +172,16 @@ function checkUnreachableCode(line, lines, lineIndex, findings, filePath) {
   }
   if (prevIndex < 0) return;
   const prevLine = lines[prevIndex].trim();
+  const rawPrevLine = lines[prevIndex];
+  const rawCurrLine = lines[lineIndex];
 
   if (!prevLine) return;
+
+  // Check indentation: if current line is at a lower indentation level than previous line,
+  // it has exited the block or function, so it is not unreachable.
+  const prevIndent = (rawPrevLine.match(/^(\s*)/)[1] || '').length;
+  const currIndent = (rawCurrLine.match(/^(\s*)/)[1] || '').length;
+  if (currIndent < prevIndent) return;
 
   const terminatorPattern = /^(return|throw|break|continue)\b/;
   if (terminatorPattern.test(prevLine) && !prevLine.endsWith('{') && !prevLine.endsWith(',')) {

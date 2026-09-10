@@ -140,7 +140,8 @@ CodeSentry uses OpenRouter's free-tier AI models with automated fallback chainin
 
 | Model ID | Provider | Recommended Use |
 |---|---|---|
-| `poolside/laguna-s-2.1:free` | Poolside | **Default**: Fast, precise syntax & logic analysis |
+| `minimax/minimax-m3:free` | MiniMax | **Recommended**: High precision code reasoning & multi-step repair |
+| `poolside/laguna-s-2.1:free` | Poolside | **Fastest**: Fast, precise syntax & logic analysis |
 | `nvidia/nemotron-3-ultra-550b-a55b:free` | NVIDIA | **Complex**: Deep polyglot & DevSecOps reasoning |
 | `minimax/minimax-m2.5:free` | MiniMax | High-speed code triage fallback |
 | `nvidia/nemotron-3-super-120b-a12b:free` | NVIDIA | Balanced code review |

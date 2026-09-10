@@ -39,6 +39,9 @@ const OPENROUTER_MODELS = {
 
 // Ordered fallback chain – tried in sequence when the primary model errors
 const MODEL_FALLBACK_CHAIN = [
+  'minimax/minimax-m3',
+  OPENROUTER_MODELS.MINIMAX_M3,
+  'deepseek/deepseek-chat',
   OPENROUTER_MODELS.LAGUNA_S_2_1,
   OPENROUTER_MODELS.MINIMAX_M2_5,
   OPENROUTER_MODELS.NEMOTRON_3_SUPER,
@@ -119,6 +122,38 @@ const SYSTEM_PROMPT = [
   '  "suggestedFix" (string)  — actionable fix recommendation',
 ].join('\n');
 
+const REPAIR_SYSTEM_PROMPT = [
+  'You are CodeSentry Automated Code Repair Assistant.',
+  'Your job is to generate a functional, production-ready code repair for a detected code finding.',
+  'CRITICAL RULES:',
+  '1. You MUST produce a REAL code fix that fixes the bug, vulnerability, or inefficiency — never just add a comment.',
+  '2. You MUST respond with valid JSON only — no markdown fences, no conversational text.',
+  '3. The JSON object must have EXACTLY these three keys:',
+  '   "explanation"  (string) — concise 1-sentence technical explanation of what was changed',
+  '   "oldSnippet"   (string) — the EXACT substring from the original code to be replaced',
+  '   "newSnippet"   (string) — the drop-in replacement code that resolves the issue',
+  '4. "oldSnippet" MUST match the source code snippet exactly (including whitespace/indentation) so string replacement succeeds.',
+].join('\n');
+
+const BATCH_REPAIR_SYSTEM_PROMPT = [
+  'You are CodeSentry Automated Code Repair Assistant.',
+  'Your job is to fix ALL listed code issues in the provided file simultaneously.',
+  'CRITICAL RULES:',
+  '1. You MUST produce REAL code fixes that fix the bugs, security flaws, or inefficiencies — never just add comments.',
+  '2. You MUST respond with valid JSON only — no markdown fences, no conversational text.',
+  '3. The response must be a single JSON object with a "fixes" array:',
+  '   {',
+  '     "fixes": [',
+  '       {',
+  '         "explanation": "concise description of this specific change",',
+  '         "oldSnippet": "exact substring from the source code to replace",',
+  '         "newSnippet": "the replacement code"',
+  '       }',
+  '     ]',
+  '   }',
+  '4. "oldSnippet" must match characters in the source file EXACTLY (including indentation) so string replacement succeeds.',
+].join('\n');
+
 // ---------------------------------------------------------------------------
 // OpenRouterClient
 // ---------------------------------------------------------------------------
@@ -187,6 +222,291 @@ class OpenRouterClient {
     return [...analyzed, ...remaining];
   }
 
+  // ── Code Repair with Dynamic Model Switching ─────────────────────────────
+
+  /**
+   * Generates a code repair diff for a finding, with automated multi-model cascading.
+   * If the preferred model fails or produces an invalid replacement snippet, it automatically
+   * walks down the fallback model chain until a model succeeds.
+   */
+  async repairCode({ finding, fileContent, line, file, preferredModel, onModelSwitch }) {
+    if (this.mockMode) {
+      return this.mockRepairCode({ finding, fileContent, line, file });
+    }
+
+    const lines = (fileContent || '').split('\n');
+    const targetLine = line || finding.line || 1;
+    const startIdx = Math.max(0, targetLine - 5);
+    const endIdx = Math.min(lines.length - 1, targetLine + 4);
+    const contextSnippet = lines.slice(startIdx, endIdx + 1).join('\n');
+
+    const prompt = [
+      `File: ${file || finding.file || 'unknown'}`,
+      `Line: ${targetLine}`,
+      `Rule: ${finding.rule || 'N/A'}`,
+      `Category: ${finding.category || 'general'}`,
+      `Severity: ${finding.severity || 'MEDIUM'}`,
+      `Message: ${finding.message || ''}`,
+      finding.suggestedFix ? `Suggested approach: ${finding.suggestedFix}` : '',
+      '',
+      `Context snippet around line ${targetLine}:`,
+      '```',
+      contextSnippet,
+      '```',
+      '',
+      'Respond with ONLY a JSON object: {"explanation": "...", "oldSnippet": "...", "newSnippet": "..."}',
+    ].filter(Boolean).join('\n');
+
+    const messages = [
+      { role: 'system', content: REPAIR_SYSTEM_PROMPT },
+      { role: 'user',   content: prompt },
+    ];
+
+    // Build the prioritized model list:
+    // 1. preferredModel (or this.model, e.g. minimax/minimax-m3:free)
+    // 2. MODEL_FALLBACK_CHAIN
+    // 3. LAST_RESORT_MODEL (openrouter/auto)
+    const primary = preferredModel || this.model || OPENROUTER_MODELS.MINIMAX_M3;
+    const modelsToTry = [primary];
+    for (const m of MODEL_FALLBACK_CHAIN) {
+      if (!modelsToTry.includes(m)) modelsToTry.push(m);
+    }
+    if (!modelsToTry.includes(LAST_RESORT_MODEL)) {
+      modelsToTry.push(LAST_RESORT_MODEL);
+    }
+
+    let lastError = null;
+    for (let i = 0; i < modelsToTry.length; i++) {
+      const modelCandidate = modelsToTry[i];
+      try {
+        const response = await this._callAPI(messages, modelCandidate);
+        const parsed = this._parseRepairResponse(response, fileContent);
+        if (parsed && parsed.oldSnippet && parsed.newSnippet) {
+          const switchedFrom = modelCandidate !== primary ? primary : null;
+          return {
+            ...parsed,
+            modelUsed: modelCandidate,
+            switchedFrom,
+          };
+        }
+        lastError = new Error(`Model ${modelCandidate} returned empty or invalid snippet`);
+      } catch (err) {
+        lastError = err;
+      }
+
+      // Check if OpenRouter recommended a replacement model slug
+      const slugMatch = lastError?.message?.match(/use this slug instead:\s*([a-zA-Z0-9_./-]+)/i);
+      if (slugMatch && slugMatch[1] && !modelsToTry.includes(slugMatch[1])) {
+        modelsToTry.splice(i + 1, 0, slugMatch[1]);
+      }
+
+      if (i + 1 < modelsToTry.length && typeof onModelSwitch === 'function') {
+        const nextModel = modelsToTry[i + 1];
+        const isTokenExpire = /token|quota|rate\s*limit|429|402|context\s*length|exceeded|credit|balance|timeout/i.test(lastError?.message || '');
+        onModelSwitch({
+          failedModel: modelCandidate,
+          nextModel,
+          error: lastError?.message || 'Failed to generate code repair',
+          isTokenExpire,
+        });
+      }
+    }
+
+    return {
+      error: `AI repair failed across all models (${modelsToTry.slice(0, 3).join(', ')}...): ${lastError?.message || 'Unable to generate fix'}`,
+    };
+  }
+
+  _parseRepairResponse(response, fileContent) {
+    try {
+      const content = response.choices?.[0]?.message?.content;
+      if (!content) return null;
+
+      let cleaned = content.trim();
+      cleaned = cleaned.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '');
+      const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) return null;
+
+      const parsed = JSON.parse(jsonMatch[0]);
+      if (!parsed.oldSnippet || !parsed.newSnippet) return null;
+
+      if (fileContent && !fileContent.includes(parsed.oldSnippet)) {
+        const trimmedOld = parsed.oldSnippet.trim();
+        if (fileContent.includes(trimmedOld)) {
+          parsed.oldSnippet = trimmedOld;
+        }
+      }
+
+      return {
+        oldSnippet: parsed.oldSnippet,
+        newSnippet: parsed.newSnippet,
+        explanation: parsed.explanation || 'Applied AI automated code repair',
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  // ── Holistic File Batch Repair with Dynamic Model Switching ──────────────
+
+  /**
+   * Repairs multiple findings across an entire file in ONE single AI call.
+   * Sends the file context along with the summary list of all findings.
+   * If token limit expires or a model fails, switches models dynamically.
+   */
+  async repairFileBatch({ file, fileContent, findings, preferredModel, onModelSwitch }) {
+    if (this.mockMode) {
+      return this.mockRepairFileBatch({ file, fileContent, findings });
+    }
+
+    const issuesSummary = findings.map((f, i) =>
+      `${i + 1}. Line ${f.line || 1} [${f.rule || f.category}]: ${f.message}${f.suggestedFix ? ` -> Recommended: ${f.suggestedFix}` : ''}`
+    ).join('\n');
+
+    const prompt = [
+      `File: ${file}`,
+      'The static analysis engine found the following issues in this file:',
+      issuesSummary,
+      '',
+      'Source code of the file:',
+      '```',
+      fileContent,
+      '```',
+      '',
+      'Please resolve ALL of the above issues in this file simultaneously.',
+      'Respond with ONLY a JSON object in this format:',
+      '{"fixes": [{"explanation": "...", "oldSnippet": "exact code substring to replace", "newSnippet": "replacement code"}]}',
+    ].join('\n');
+
+    const messages = [
+      { role: 'system', content: BATCH_REPAIR_SYSTEM_PROMPT },
+      { role: 'user',   content: prompt },
+    ];
+
+    const primary = preferredModel || this.model || OPENROUTER_MODELS.MINIMAX_M3;
+    const modelsToTry = [primary];
+    for (const m of MODEL_FALLBACK_CHAIN) {
+      if (!modelsToTry.includes(m)) modelsToTry.push(m);
+    }
+    if (!modelsToTry.includes(LAST_RESORT_MODEL)) {
+      modelsToTry.push(LAST_RESORT_MODEL);
+    }
+
+    let lastError = null;
+    for (let i = 0; i < modelsToTry.length; i++) {
+      const modelCandidate = modelsToTry[i];
+      try {
+        const response = await this._callAPI(messages, modelCandidate, 2048);
+        const fixes = this._parseBatchRepairResponse(response, fileContent);
+        if (fixes && fixes.length > 0) {
+          const switchedFrom = modelCandidate !== primary ? primary : null;
+          return {
+            fixes,
+            modelUsed: modelCandidate,
+            switchedFrom,
+          };
+        }
+        lastError = new Error(`Model ${modelCandidate} returned empty or invalid batch fixes`);
+      } catch (err) {
+        lastError = err;
+      }
+
+      // Check if OpenRouter recommended a replacement model slug
+      const slugMatch = lastError?.message?.match(/use this slug instead:\s*([a-zA-Z0-9_./-]+)/i);
+      if (slugMatch && slugMatch[1] && !modelsToTry.includes(slugMatch[1])) {
+        modelsToTry.splice(i + 1, 0, slugMatch[1]);
+      }
+
+      // Check if token expiration or rate limits occurred and trigger model switch notification
+      if (i + 1 < modelsToTry.length && typeof onModelSwitch === 'function') {
+        const nextModel = modelsToTry[i + 1];
+        const isTokenExpire = /token|quota|rate\s*limit|429|402|context\s*length|exceeded|credit|balance|timeout/i.test(lastError?.message || '');
+        onModelSwitch({
+          failedModel: modelCandidate,
+          nextModel,
+          error: lastError?.message || 'Failed to generate code repair',
+          isTokenExpire,
+        });
+      }
+    }
+
+    return {
+      error: `Batch repair failed across all models (${modelsToTry.slice(0, 3).join(', ')}...): ${lastError?.message || 'No valid fixes generated'}`,
+    };
+  }
+
+  _parseBatchRepairResponse(response, fileContent) {
+    try {
+      const content = response.choices?.[0]?.message?.content;
+      if (!content) return null;
+
+      let cleaned = content.trim();
+      cleaned = cleaned.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '');
+      const jsonMatch = cleaned.match(/\{[\s\S]*\}|\[[\s\S]*\]/);
+      if (!jsonMatch) return null;
+
+      const parsed = JSON.parse(jsonMatch[0]);
+      const list = Array.isArray(parsed) ? parsed : (parsed.fixes || [parsed]);
+
+      const validFixes = [];
+      const normalizedFileContent = (fileContent || '').replace(/\r\n/g, '\n');
+
+      for (const item of list) {
+        if (item && item.oldSnippet && item.newSnippet) {
+          let old = item.oldSnippet;
+          const normalizedOld = old.replace(/\r\n/g, '\n');
+
+          if (fileContent && !fileContent.includes(old)) {
+            if (normalizedFileContent.includes(normalizedOld)) {
+              old = normalizedOld;
+            } else {
+              const trimmed = old.trim();
+              if (fileContent.includes(trimmed) || normalizedFileContent.includes(trimmed)) {
+                old = trimmed;
+              } else {
+                continue;
+              }
+            }
+          }
+          validFixes.push({
+            oldSnippet: old,
+            newSnippet: item.newSnippet,
+            explanation: item.explanation || 'Applied batch AI code repair',
+          });
+        }
+      }
+      return validFixes.length > 0 ? validFixes : null;
+    } catch {
+      return null;
+    }
+  }
+
+  mockRepairFileBatch({ fileContent, findings }) {
+    const lines = (fileContent || '').split('\n');
+    const fixes = [];
+    for (const f of findings || []) {
+      const lineIdx = Math.max(0, (f.line || 1) - 1);
+      const line = lines[lineIdx] || '';
+      if (line.includes('==') && !line.includes('===')) {
+        fixes.push({
+          oldSnippet: line,
+          newSnippet: line.replace(/==(?!=)/g, '==='),
+          explanation: 'Replaced loose equality with strict equality',
+        });
+      } else if (line.includes('var ')) {
+        fixes.push({
+          oldSnippet: line,
+          newSnippet: line.replace(/\bvar\b/, 'const'),
+          explanation: 'Replaced var with const',
+        });
+      }
+    }
+    return {
+      fixes: fixes.length > 0 ? fixes : null,
+      modelUsed: OPENROUTER_MODELS.MINIMAX_M3,
+    };
+  }
+
   // ── Model selection helpers ───────────────────────────────────────────────
 
   setModelForContext(scanContext) {
@@ -239,7 +559,7 @@ class OpenRouterClient {
 
   // ── Raw HTTP call (node:https, zero deps) ─────────────────────────────────
 
-  async _callAPI(messages, model) {
+  async _callAPI(messages, model, maxTokens = this.maxTokens) {
     const https = require('https');
 
     return new Promise((resolve, reject) => {
@@ -247,7 +567,7 @@ class OpenRouterClient {
 
       const postData = JSON.stringify({
         model,
-        max_tokens: this.maxTokens,
+        max_tokens: maxTokens || this.maxTokens,
         temperature: this.temperature,
         messages,
       });
@@ -448,6 +768,50 @@ class OpenRouterClient {
       suggestedFix: 'Review the code in context and apply appropriate remediation.',
     };
   }
+
+  // ── Mock code repair for testing without API key ─────────────────────────
+
+  mockRepairCode({ finding, fileContent, line }) {
+    const lines = (fileContent || '').split('\n');
+    const targetLine = line || finding.line || 1;
+    const lineIdx = Math.max(0, targetLine - 1);
+    const originalLine = lines[lineIdx] || '';
+
+    if (finding.rule === 'loose-equality' || (finding.message && (finding.message.includes('===') || finding.message.includes('Loose equality')))) {
+      const fixedLine = originalLine.replace(/==(?!=)/g, '===').replace(/!=(?!=)/g, '!==');
+      if (fixedLine !== originalLine) {
+        return {
+          oldSnippet: originalLine,
+          newSnippet: fixedLine,
+          explanation: 'Replaced loose equality with strict equality',
+          modelUsed: OPENROUTER_MODELS.MINIMAX_M3,
+        };
+      }
+    }
+
+    if (finding.rule === 'off-by-one' || (finding.message && finding.message.includes('off-by-one'))) {
+      const fixedLine = originalLine.replace(/<=\s*([a-zA-Z0-9_$.]+)\.length/g, '< $1.length');
+      if (fixedLine !== originalLine) {
+        return {
+          oldSnippet: originalLine,
+          newSnippet: fixedLine,
+          explanation: 'Corrected loop boundary from <= to < to avoid index out-of-bounds',
+          modelUsed: OPENROUTER_MODELS.MINIMAX_M3,
+        };
+      }
+    }
+
+    if (originalLine.trim()) {
+      return {
+        oldSnippet: originalLine,
+        newSnippet: originalLine,
+        explanation: finding.suggestedFix || 'Resolved code finding via AI repair',
+        modelUsed: OPENROUTER_MODELS.MINIMAX_M3,
+      };
+    }
+
+    return null;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -466,6 +830,7 @@ module.exports = {
   DEFAULT_MODEL,
   COMPLEX_MODEL,
   SYSTEM_PROMPT,
+  REPAIR_SYSTEM_PROMPT,
   calculateComplexity,
   selectModel,
 };
