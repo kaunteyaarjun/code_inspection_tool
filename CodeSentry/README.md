@@ -24,7 +24,7 @@ npm install -g codesentry-ai
 codesentry scan .
 
 # Or install directly from GitHub:
-npm install -g github:kaunteyaarjun/code_inspection_tool
+npm install -g github:raelx20/codesentry
 ```
 
 > **Note**: Both `codesentry` and `codesentry-ai` command aliases work identically in your shell.
@@ -69,7 +69,7 @@ When a codebase is clean (**0 vulnerabilities / 0 bugs / perfect**):
 
 ### Option A: Global CLI Install
 ```bash
-npm install -g codesentry
+npm install -g codesentry-ai
 
 # Now available globally from any terminal
 codesentry scan .
@@ -77,18 +77,20 @@ codesentry auth
 codesentry model
 ```
 
-### Option B: Project Dev Dependency
+### Option B: Zero-Install via npx
 ```bash
-npm install --save-dev codesentry
-
-# Run via npx
-npx codesentry scan .
+npx codesentry-ai scan .
 ```
 
-### Option C: Clone & Run from Source
+### Option C: Install directly from GitHub
 ```bash
-git clone https://github.com/kaunteyaarjun/code_inspection_tool.git
-cd code_inspection_tool/CodeSentry
+npm install -g github:raelx20/codesentry
+```
+
+### Option D: Clone & Run from Source
+```bash
+git clone https://github.com/raelx20/codesentry.git
+cd codesentry/CodeSentry
 npm install
 npm link # or node bin/codesentry.js scan .
 ```

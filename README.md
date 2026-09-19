@@ -24,7 +24,7 @@ npm install -g codesentry-ai
 codesentry scan .
 
 # Or install directly from GitHub:
-npm install -g github:kaunteyaarjun/code_inspection_tool
+npm install -g github:raelx20/codesentry
 ```
 
 > **Note**: Both `codesentry` and `codesentry-ai` command aliases work identically in your shell.
