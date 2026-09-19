@@ -1,10 +1,11 @@
 {
-  "name": "codesentry",
+  "name": "codesentry-ai",
   "version": "0.1.0",
   "description": "CLI-based codebase inspection and DevSecOps tool with AI-powered analysis",
   "main": "src/core/scan.js",
   "bin": {
-    "codesentry": "./bin/codesentry.js"
+    "codesentry": "./bin/codesentry.js",
+    "codesentry-ai": "./bin/codesentry.js"
   },
   "preferGlobal": true,
   "files": [

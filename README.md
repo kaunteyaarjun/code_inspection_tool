@@ -16,13 +16,18 @@ CodeSentry inspects JavaScript, TypeScript, and Python codebases for security vu
 Run instantly without cloning or installing dependencies:
 
 ```bash
-# Run directly from GitHub with zero install:
-npx github:kaunteyaarjun/code_inspection_tool scan .
+# Run directly via npx (zero install):
+npx codesentry-ai scan .
 
-# Or install globally from GitHub:
-npm install -g github:kaunteyaarjun/code_inspection_tool
+# Or install globally from npm:
+npm install -g codesentry-ai
 codesentry scan .
+
+# Or install directly from GitHub:
+npm install -g github:kaunteyaarjun/code_inspection_tool
 ```
+
+> **Note**: Both `codesentry` and `codesentry-ai` command aliases work identically in your shell.
 
 On first run, CodeSentry interactively configures your free OpenRouter API key and saves it to `~/.codesentry/config.json`. Subsequent runs never prompt again.
 
