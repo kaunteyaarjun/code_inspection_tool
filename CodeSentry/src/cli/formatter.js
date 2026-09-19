@@ -1,6 +1,6 @@
 /**
  * CodeSentry Scan Result Formatter
- * OpenCode Aesthetic & Dark Card Typography
+ * Terminal Design System & Dark Card Typography
  */
 
 'use strict';
@@ -58,7 +58,7 @@ class ScanResultFormatter {
       return lines;
     }
 
-    // ── OpenCode Dark Summary Card ───────────────────────────────────────────
+    // ── CodeSentry Dark Summary Card ───────────────────────────────────────────
     const cardLines = [];
 
     // Verdict & Health gauge
@@ -184,7 +184,7 @@ class ScanResultFormatter {
       return lines;
     }
 
-    // ── OpenCode Dark Inspection Card ─────────────────────────────────────────
+    // ── CodeSentry Dark Inspection Card ─────────────────────────────────────────
     const cardLines = [];
     const sevColor = getSeverityColor(finding.severity);
 
@@ -198,7 +198,7 @@ class ScanResultFormatter {
     // Message line
     cardLines.push(bold(colors.white(finding.message)));
 
-    // Code Context Snippet (OpenCode diff-style view)
+    // Code Context Snippet (Diff-style view)
     if (finding.line && finding.file) {
       const snippet = getCodeSnippet(finding.file, finding.line, 2);
       if (snippet && snippet.length > 0) {

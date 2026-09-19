@@ -244,6 +244,9 @@ async function main() {
           jsonMode,
           verbose,
           aiEnabled: !currentNoAi,
+          onProgress: (state) => {
+            progress.update(state);
+          },
         };
 
         if (parsed.options.severity) {
@@ -485,6 +488,13 @@ async function main() {
           description: 'Launch audit report file directly in your default editor',
         });
       }
+
+      actionOptions.push({
+        label: 'Exit CodeSentry',
+        value: 'exit',
+        badge: 'EXIT',
+        description: 'Close the inspection session and return to terminal',
+      });
 
       const action = await Select({
         label: 'Audit session active. What would you like to do next?',
@@ -945,6 +955,9 @@ async function main() {
         }
       } else if (action === 'rescan') {
         output.print(theme.colors.gray('Re-initiating codebase inspection...\n'));
+      } else if (action === 'exit') {
+        output.print('\n' + theme.colors.cyan('◆') + ' ' + theme.colors.white('CodeSentry session closed.'));
+        process.exit(0);
       }
     }
   }

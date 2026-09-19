@@ -1,6 +1,5 @@
 /**
  * CodeSentry Status Indicator Component
- * Inspired by InkUI & OpenCode
  *
  * Usage:
  *   const { StatusIndicator } = require('./components/status-indicator');

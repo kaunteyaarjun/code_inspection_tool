@@ -97,11 +97,28 @@ function loadGlobalConfig(customPath = null) {
     process.env.OPENROUTER_MODEL = config.openrouter_model;
   }
 
+  if (!process.env.AGENTROUTER_API_KEY && (config.agentrouter_api_key || config.omniroute_api_key)) {
+    process.env.AGENTROUTER_API_KEY = config.agentrouter_api_key || config.omniroute_api_key;
+  }
+
+  if (!process.env.AGENTROUTER_BASE_URL && (config.agentrouter_base_url || config.omniroute_base_url)) {
+    process.env.AGENTROUTER_BASE_URL = config.agentrouter_base_url || config.omniroute_base_url;
+  }
+
+  if (!process.env.CODESENTRY_AI_PROVIDER && config.ai_provider) {
+    process.env.CODESENTRY_AI_PROVIDER = config.ai_provider;
+  }
+
+  const activeProvider = (process.env.CODESENTRY_AI_PROVIDER || config.ai_provider || 'openrouter').toLowerCase();
+
   return {
     config,
-    apiKey: process.env.OPENROUTER_API_KEY || null,
-    model: process.env.OPENROUTER_MODEL || 'poolside/laguna-s-2.1:free',
-    isConfigured: Boolean(process.env.OPENROUTER_API_KEY),
+    provider: activeProvider,
+    apiKey: activeProvider === 'agentrouter' ? (process.env.AGENTROUTER_API_KEY || null) : (process.env.OPENROUTER_API_KEY || null),
+    openrouterKey: process.env.OPENROUTER_API_KEY || null,
+    agentrouterKey: process.env.AGENTROUTER_API_KEY || null,
+    model: process.env.OPENROUTER_MODEL || config.openrouter_model || 'nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free',
+    isConfigured: Boolean(process.env.OPENROUTER_API_KEY || process.env.AGENTROUTER_API_KEY),
   };
 }
 
@@ -277,19 +294,24 @@ async function handleAuthCommand(options = {}) {
   console.log(theme.renderLogo());
 
   const currentConfig = readGlobalConfig();
-  const currentKey = process.env.OPENROUTER_API_KEY || currentConfig.openrouter_api_key || null;
-  const currentModel = process.env.OPENROUTER_MODEL || currentConfig.openrouter_model || 'poolside/laguna-s-2.1:free';
+  const activeProvider = (process.env.CODESENTRY_AI_PROVIDER || currentConfig.ai_provider || 'openrouter').toLowerCase();
+  const openrouterKey = process.env.OPENROUTER_API_KEY || currentConfig.openrouter_api_key || null;
+  const agentrouterKey = process.env.AGENTROUTER_API_KEY || currentConfig.agentrouter_api_key || currentConfig.omniroute_api_key || null;
+  const agentrouterUrl = process.env.AGENTROUTER_BASE_URL || currentConfig.agentrouter_base_url || 'https://agentrouter.org/v1';
+  const currentModel = process.env.OPENROUTER_MODEL || currentConfig.openrouter_model || 'nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free';
   const configPath = getGlobalConfigPath();
 
-  const isConfigured = Boolean(currentKey);
+  const isConfigured = Boolean(openrouterKey || agentrouterKey);
 
   const statusLines = [
     `${theme.colors.cyan('▎')} ${theme.colors.brightWhite(theme.bold('Authentication Status'))}`,
     `${theme.colors.cyan('▎')}`,
-    `${theme.colors.cyan('▎')} ${theme.colors.white('Status:')}    ${isConfigured ? theme.colors.green('● Configured & Ready') : theme.colors.yellow('○ Not configured (Static mode only)')}`,
-    `${theme.colors.cyan('▎')} ${theme.colors.white('API Key:')}   ${theme.colors.cyan(maskApiKey(currentKey))}`,
-    `${theme.colors.cyan('▎')} ${theme.colors.white('AI Model:')}  ${theme.colors.brightWhite(currentModel)}`,
-    `${theme.colors.cyan('▎')} ${theme.colors.white('Config:')}    ${theme.colors.gray(configPath)}`,
+    `${theme.colors.cyan('▎')} ${theme.colors.white('Status:')}          ${isConfigured ? theme.colors.green('● Configured & Ready') : theme.colors.yellow('○ Not configured (Static mode only)')}`,
+    `${theme.colors.cyan('▎')} ${theme.colors.white('Active Router:')}   ${activeProvider === 'agentrouter' ? theme.colors.cyan('● AgentRouter') : theme.colors.green('● OpenRouter')}`,
+    `${theme.colors.cyan('▎')} ${theme.colors.white('OpenRouter:')}      ${openrouterKey ? theme.colors.green(maskApiKey(openrouterKey)) : theme.colors.gray('(not configured)')}`,
+    `${theme.colors.cyan('▎')} ${theme.colors.white('AgentRouter:')}     ${agentrouterKey ? theme.colors.cyan(maskApiKey(agentrouterKey)) + theme.colors.gray(` · ${agentrouterUrl}`) : theme.colors.gray('(not configured)')}`,
+    `${theme.colors.cyan('▎')} ${theme.colors.white('Active Model:')}    ${theme.colors.brightWhite(currentModel)}`,
+    `${theme.colors.cyan('▎')} ${theme.colors.white('Config:')}          ${theme.colors.gray(configPath)}`,
   ];
 
   console.log(theme.card(statusLines, {
@@ -301,10 +323,22 @@ async function handleAuthCommand(options = {}) {
 
   const menuOptions = [
     {
-      label: isConfigured ? 'Update OpenRouter API Key' : 'Enter OpenRouter API Key',
-      value: 'update_key',
-      badge: 'KEY',
-      description: 'Enter and save a new OpenRouter API key to ~/.codesentry/config.json',
+      label: 'Switch Active Provider (OpenRouter / AgentRouter)',
+      value: 'switch_provider',
+      badge: activeProvider.toUpperCase(),
+      description: `Toggle active engine (Currently: ${activeProvider.toUpperCase()})`,
+    },
+    {
+      label: openrouterKey ? 'Update OpenRouter API Key' : 'Configure OpenRouter API Key',
+      value: 'update_openrouter',
+      badge: 'OPENROUTER',
+      description: 'Enter and save an OpenRouter key to ~/.codesentry/config.json',
+    },
+    {
+      label: agentrouterKey ? 'Update AgentRouter Credentials' : 'Configure AgentRouter (Key & Proxy)',
+      value: 'update_agentrouter',
+      badge: 'AGENTROUTER',
+      description: 'Configure AgentRouter API key and custom gateway/proxy endpoint',
     },
     {
       label: 'Switch Active AI Model',
@@ -316,10 +350,10 @@ async function handleAuthCommand(options = {}) {
 
   if (isConfigured) {
     menuOptions.push({
-      label: 'Remove API Key (Logout / Static mode)',
+      label: 'Remove All Credentials (Logout / Static mode)',
       value: 'logout',
       badge: 'LOGOUT',
-      description: 'Delete stored key from ~/.codesentry/config.json',
+      description: 'Delete stored keys from ~/.codesentry/config.json',
     });
   }
 
@@ -335,7 +369,38 @@ async function handleAuthCommand(options = {}) {
     defaultIndex: 0,
   });
 
-  if (action === 'update_key') {
+  if (action === 'switch_provider') {
+    const { Select: SelectComponent } = require('./components/select');
+    const providerOptions = [
+      {
+        label: 'OpenRouter (Multi-model Cloud Gateway)',
+        value: 'openrouter',
+        badge: openrouterKey ? 'READY' : 'NEEDS KEY',
+        description: 'Connect directly to OpenRouter cloud models (openrouter.ai)',
+      },
+      {
+        label: 'AgentRouter (Anthropic relay / Local proxy)',
+        value: 'agentrouter',
+        badge: agentrouterKey ? 'READY' : 'NEEDS KEY',
+        description: 'Route requests to AgentRouter or local proxy (agentrouter.org / localhost:7187)',
+      },
+    ];
+
+    const chosenProvider = await SelectComponent({
+      label: 'Select Active AI Provider:',
+      options: providerOptions,
+      defaultIndex: activeProvider === 'agentrouter' ? 1 : 0,
+    });
+
+    if (chosenProvider) {
+      saveGlobalConfig({ ai_provider: chosenProvider });
+      process.env.CODESENTRY_AI_PROVIDER = chosenProvider;
+      console.log('\n' + formatStatusIndicator({
+        status: 'online',
+        label: `Active AI provider switched to ${theme.colors.cyan(chosenProvider.toUpperCase())}\n`,
+      }));
+    }
+  } else if (action === 'update_openrouter') {
     console.log('\n' + theme.colors.cyan('▎') + ' ' + theme.colors.white('Paste your OpenRouter API key below (https://openrouter.ai/keys):'));
     const inputKey = await promptInput(theme.colors.cyan('  OpenRouter API Key: '));
 
@@ -357,59 +422,81 @@ async function handleAuthCommand(options = {}) {
         label: 'No changes made.',
       }) + '\n');
     }
+  } else if (action === 'update_agentrouter') {
+    console.log('\n' + theme.colors.cyan('▎') + ' ' + theme.colors.white('Enter AgentRouter API Key (sk-...):'));
+    const inputKey = await promptInput(theme.colors.cyan(`  AgentRouter API Key [${maskApiKey(agentrouterKey)}]: `));
+    const effectiveKey = inputKey || agentrouterKey;
+
+    console.log('\n' + theme.colors.cyan('▎') + ' ' + theme.colors.white('Enter AgentRouter Base URL (e.g. https://agentrouter.org/v1 or http://localhost:7187/v1):'));
+    const inputUrl = await promptInput(theme.colors.cyan(`  Endpoint URL [${agentrouterUrl}]: `));
+    const effectiveUrl = inputUrl || agentrouterUrl;
+
+    if (effectiveKey && effectiveKey.length >= 8) {
+      saveGlobalConfig({
+        agentrouter_api_key: effectiveKey,
+        agentrouter_base_url: effectiveUrl,
+      });
+      process.env.AGENTROUTER_API_KEY = effectiveKey;
+      process.env.AGENTROUTER_BASE_URL = effectiveUrl;
+
+      console.log('\n' + formatStatusIndicator({
+        status: 'online',
+        label: `AgentRouter configuration saved to ${theme.colors.gray('~/.codesentry/config.json')}`,
+      }));
+      console.log(theme.colors.gray(`  Key: ${maskApiKey(effectiveKey)} · Endpoint: ${effectiveUrl}\n`));
+    } else {
+      console.log('\n' + formatStatusIndicator({
+        status: 'warning',
+        label: 'No changes made.',
+      }) + '\n');
+    }
   } else if (action === 'switch_model') {
     const { Select: SelectComponent } = require('./components/select');
-    // Import model catalog from bin or define standard options
     const modelOptions = [
+      {
+        label: 'NVIDIA Nemotron 3 Nano Omni (nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free)',
+        value: 'nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free',
+        badge: 'ACTIVE FREE',
+        description: 'Verified live zero-cost model for reasoning and automated code repair',
+      },
+      {
+        label: 'NVIDIA Nemotron 3.5 Lightning (nvidia/nemotron-3.5-lightning:free)',
+        value: 'nvidia/nemotron-3.5-lightning:free',
+        badge: 'ACTIVE FREE',
+        description: 'High-speed verified live zero-cost model for rapid triage',
+      },
+      {
+        label: 'Cohere North Mini Code (cohere/north-mini-code:free)',
+        value: 'cohere/north-mini-code:free',
+        badge: 'ACTIVE FREE',
+        description: 'Fast Cohere-optimized code structure analysis (free tier)',
+      },
       {
         label: 'MiniMax M3 (minimax/minimax-m3)',
         value: 'minimax/minimax-m3',
-        badge: 'RECOMMENDED',
+        badge: 'PAID TIER',
         description: 'Premier code reasoning & automated repair model with high precision synthesis',
       },
       {
         label: 'DeepSeek V3 (deepseek/deepseek-chat)',
         value: 'deepseek/deepseek-chat',
-        badge: 'POPULAR',
+        badge: 'PAID TIER',
         description: 'High-precision automated code repair and vulnerability remediation',
       },
       {
         label: 'Qwen 2.5 Coder 32B (qwen/qwen-2.5-coder-32b-instruct)',
         value: 'qwen/qwen-2.5-coder-32b-instruct',
-        badge: '#1 CODING',
+        badge: 'PAID TIER',
         description: 'Top-ranking open coding benchmark model (92.7% HumanEval)',
       },
       {
         label: 'Llama 3.3 70B (meta-llama/llama-3.3-70b-instruct)',
         value: 'meta-llama/llama-3.3-70b-instruct',
-        badge: '70B PARAMS',
+        badge: 'PAID TIER',
         description: 'State-of-the-art open reasoning and multi-turn refactoring',
       },
       {
-        label: 'Qwen 2.5 72B (qwen/qwen-2.5-72b-instruct)',
-        value: 'qwen/qwen-2.5-72b-instruct',
-        badge: '72B PARAMS',
-        description: 'Deep polyglot code reasoning and architectural analysis',
-      },
-      {
-        label: 'MiniMax M2.5 (minimax/minimax-m2.5)',
-        value: 'minimax/minimax-m2.5',
-        badge: 'FAST',
-        description: 'High-speed balanced code inspection and remediation diffs',
-      },
-      {
-        label: 'GLM 5.2 (z-ai/glm-5.2)',
-        value: 'z-ai/glm-5.2',
-        description: 'High-performance general reasoning and code triage',
-      },
-      {
-        label: 'Cohere North Mini Code (cohere/north-mini-code:free)',
-        value: 'cohere/north-mini-code:free',
-        badge: 'FREE',
-        description: 'Fast Cohere-optimized code structure analysis',
-      },
-      {
-        label: 'Auto (Smart Context-Aware Heuristics)',
+        label: 'Auto (Smart Context-Aware Heuristics with Free Fallback)',
         value: 'auto',
         badge: 'AUTO',
         description: 'Dynamically adapts model selection based on project size & complexity',
@@ -436,11 +523,16 @@ async function handleAuthCommand(options = {}) {
       }));
     }
   } else if (action === 'logout') {
-    saveGlobalConfig({ openrouter_api_key: null });
+    saveGlobalConfig({
+      openrouter_api_key: null,
+      agentrouter_api_key: null,
+      omniroute_api_key: null,
+    });
     delete process.env.OPENROUTER_API_KEY;
+    delete process.env.AGENTROUTER_API_KEY;
     console.log('\n' + formatStatusIndicator({
       status: 'warning',
-      label: 'OpenRouter API key removed from local config. Running in static mode.\n',
+      label: 'API credentials removed from local config. Running in static mode.\n',
     }));
   }
 

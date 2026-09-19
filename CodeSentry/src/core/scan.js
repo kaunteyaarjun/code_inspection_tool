@@ -43,6 +43,9 @@ async function scan(projectPath, overrides = {}) {
 
   const config = createConfig({ projectPath, ...overrides, validatePath: false });
 
+  const onProgress = typeof overrides.onProgress === 'function' ? overrides.onProgress : null;
+
+  if (onProgress) onProgress('discovering');
   let discoveryResult;
   try {
     discoveryResult = await realDiscover(config);
@@ -51,6 +54,7 @@ async function scan(projectPath, overrides = {}) {
     discoveryResult = { files: [], languages: [], fileMap: {}, projectPath: config.projectPath };
   }
 
+  if (onProgress) onProgress('analyzing');
   let staticResults = [];
   try {
     staticResults = await runStaticAnalyzers(discoveryResult, config);
@@ -65,6 +69,7 @@ async function scan(projectPath, overrides = {}) {
     errors.push({ stage: 'custom-analyzers', message: err.message });
   }
 
+  if (onProgress) onProgress('processing');
   const allRawResults = [...staticResults];
   if (customResult && customResult.rawResults.length > 0) {
     allRawResults.push(customResult);
@@ -96,6 +101,7 @@ async function scan(projectPath, overrides = {}) {
   }
 
   if (config.aiEnabled && filteredFindings.length > 0) {
+    if (onProgress) onProgress('ai_analysis');
     try {
       filteredFindings = await analyzeWithAI(filteredFindings, discoveryResult, config);
     } catch (err) {

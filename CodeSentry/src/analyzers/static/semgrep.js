@@ -4,11 +4,11 @@ const { promisify } = require('node:util');
 const execFileAsync = promisify(execFile);
 
 const TOOL_NAME = 'semgrep';
-const TIMEOUT_MS = 60000;
+const TIMEOUT_MS = 15000;
 
 async function checkAvailability() {
   try {
-    await execFileAsync('semgrep', ['--version'], { timeout: 10000 });
+    await execFileAsync('semgrep', ['--version'], { timeout: 5000 });
     return true;
   } catch {
     return false;
@@ -31,6 +31,8 @@ async function runSemgrep(files, config = {}) {
     const args = [
       '--json',
       '--quiet',
+      '--metrics=off',
+      '--disable-version-check',
       '--config', 'auto',
       ...files,
     ];

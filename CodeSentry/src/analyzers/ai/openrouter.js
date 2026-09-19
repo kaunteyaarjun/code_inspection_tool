@@ -15,29 +15,49 @@
 // Model catalogue – grouped by tier (verified live against OpenRouter API)
 // ---------------------------------------------------------------------------
 const OPENROUTER_MODELS = {
-  // ── Premier Flagship Coding Benchmark Models (paid) ──
+  // ── Tier 1: Premier Flagship Coding Benchmark Models (paid) ──
   MINIMAX_M3:             'minimax/minimax-m3',
   DEEPSEEK_CHAT:          'deepseek/deepseek-chat',
+  DEEPSEEK_R1:            'deepseek/deepseek-r1',
   QWEN_CODER_32B:         'qwen/qwen-2.5-coder-32b-instruct',
   LLAMA_3_3_70B:          'meta-llama/llama-3.3-70b-instruct',
   QWEN_72B:               'qwen/qwen-2.5-72b-instruct',
   MINIMAX_M2_5:           'minimax/minimax-m2.5',
   GLM_5_2:                'z-ai/glm-5.2',
+  CLAUDE_SONNET_3_7:      'anthropic/claude-3.7-sonnet',
+  CLAUDE_SONNET_3_5:      'anthropic/claude-3.5-sonnet',
+  GPT_4O:                 'openai/gpt-4o',
+  GEMINI_2_5_PRO:         'google/gemini-2.5-pro',
+  CODESTRAL_2501:         'mistralai/codestral-2501',
+  MINIMAX_M1:             'minimax/minimax-01',
 
-  // ── New Ultra-Cheap Paid Models (< $0.5/M input tokens) ──
+  // ── Tier 2: Ultra-Cheap Paid Models (< $0.5/M input tokens) ──
   DEEPSEEK_V4_1_FLASH:    'deepseek/deepseek-v4.1-flash',
   QWEN_3_8_FLASH:         'qwen/qwen3.8-flash',
   QWEN_3_8_MAX:           'qwen/qwen3.8-max-0902',
   INCEPTION_MERCURY_2_5:  'inception/mercury-2.5',
   GLM_5_3_FLASH:          'z-ai/glm-5.3-flash',
   GEMINI_3_8_FLASH:       'google/gemini-3.8-flash',
-  MUSE_SPARK_CONTRIBUTOR: 'meta/muse-spark-1.3-contributor',
+  GEMINI_2_FLASH_001:     'google/gemini-2.0-flash-001',
+  GPT_4O_MINI:            'openai/gpt-4o-mini',
   GPT_5_NANO:             'openai/gpt-5-nano',
   GPT_OSS_120B:           'openai/gpt-oss-120b',
+  CLAUDE_3_HAIKU:         'anthropic/claude-3-haiku',
+  MUSE_SPARK_CONTRIBUTOR: 'meta/muse-spark-1.3-contributor',
   GRANITE_4_2_8B:         'ibm-granite/granite-4.2-8b',
+  PHI_3_5_MINI:           'microsoft/phi-3.5-mini-128k-instruct',
+  MISTRAL_SMALL_24B:      'mistralai/mistral-small-24b-instruct-2501',
 
-  // ── Verified Free / Zero-Cost Models ──
+  // ── Tier 3: Verified Free / Zero-Cost Models ──
   OPENROUTER_FREE:        'openrouter/free',
+  GEMINI_2_FLASH_FREE:    'google/gemini-2.0-flash-exp:free',
+  GEMINI_2_PRO_FREE:      'google/gemini-2.0-pro-exp-02-05:free',
+  DEEPSEEK_R1_FREE:       'deepseek/deepseek-r1:free',
+  DEEPSEEK_CHAT_FREE:     'deepseek/deepseek-chat:free',
+  LLAMA_3_3_70B_FREE:     'meta-llama/llama-3.3-70b-instruct:free',
+  QWEN_CODER_32B_FREE:    'qwen/qwen-2.5-coder-32b-instruct:free',
+  MISTRAL_SMALL_FREE:     'mistralai/mistral-small-24b-instruct-2501:free',
+  NEMOTRON_70B_FREE:      'nvidia/llama-3.1-nemotron-70b-instruct:free',
   NEMOTRON_NANO_OMNI:     'nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free',
   NEX_N2_5_PRO:           'nex-agi/nex-n2.5-pro:free',
   NEX_N2_5_MINI:          'nex-agi/nex-n2.5-mini:free',
@@ -64,16 +84,24 @@ const OPENROUTER_MODELS = {
 
 // Dedicated free-tier fallback chain for zero-cost operation
 const FREE_MODEL_FALLBACK_CHAIN = [
-  OPENROUTER_MODELS.OPENROUTER_FREE,
   OPENROUTER_MODELS.NEMOTRON_NANO_OMNI,
+  OPENROUTER_MODELS.NEMOTRON_3_5_LIGHTNING,
+  OPENROUTER_MODELS.NORTH_MINI_CODE,
+  OPENROUTER_MODELS.LAGUNA_S_2_1,
   OPENROUTER_MODELS.NEX_N2_5_PRO,
   OPENROUTER_MODELS.NEX_N2_5_MINI,
   OPENROUTER_MODELS.INKLING,
   OPENROUTER_MODELS.INKLING_SMALL,
-  OPENROUTER_MODELS.NEMOTRON_3_5_LIGHTNING,
-  OPENROUTER_MODELS.NORTH_MINI_CODE,
+  OPENROUTER_MODELS.OPENROUTER_FREE,
+  OPENROUTER_MODELS.DEEPSEEK_CHAT_FREE,
+  OPENROUTER_MODELS.DEEPSEEK_R1_FREE,
+  OPENROUTER_MODELS.GEMINI_2_FLASH_FREE,
+  OPENROUTER_MODELS.GEMINI_2_PRO_FREE,
+  OPENROUTER_MODELS.LLAMA_3_3_70B_FREE,
+  OPENROUTER_MODELS.QWEN_CODER_32B_FREE,
+  OPENROUTER_MODELS.MISTRAL_SMALL_FREE,
+  OPENROUTER_MODELS.NEMOTRON_70B_FREE,
   OPENROUTER_MODELS.NEMOTRON_3_SUPER,
-  OPENROUTER_MODELS.LAGUNA_S_2_1,
   OPENROUTER_MODELS.LAGUNA_XS_2_1,
   OPENROUTER_MODELS.GEMMA_4_31B,
   OPENROUTER_MODELS.GEMMA_4_26B,
@@ -91,24 +119,44 @@ const MODEL_FALLBACK_CHAIN = [
   // ── Tier 1: Premier paid coding models ──
   OPENROUTER_MODELS.MINIMAX_M3,
   OPENROUTER_MODELS.DEEPSEEK_CHAT,
+  OPENROUTER_MODELS.DEEPSEEK_R1,
   OPENROUTER_MODELS.QWEN_CODER_32B,
   OPENROUTER_MODELS.LLAMA_3_3_70B,
   OPENROUTER_MODELS.QWEN_72B,
   OPENROUTER_MODELS.MINIMAX_M2_5,
   OPENROUTER_MODELS.GLM_5_2,
+  OPENROUTER_MODELS.CLAUDE_SONNET_3_7,
+  OPENROUTER_MODELS.CLAUDE_SONNET_3_5,
+  OPENROUTER_MODELS.GPT_4O,
+  OPENROUTER_MODELS.GEMINI_2_5_PRO,
+  OPENROUTER_MODELS.CODESTRAL_2501,
+  OPENROUTER_MODELS.MINIMAX_M1,
   // ── Tier 2: Ultra-cheap paid (< $0.5/M tokens) ──
   OPENROUTER_MODELS.DEEPSEEK_V4_1_FLASH,
   OPENROUTER_MODELS.QWEN_3_8_FLASH,
   OPENROUTER_MODELS.INCEPTION_MERCURY_2_5,
   OPENROUTER_MODELS.GLM_5_3_FLASH,
   OPENROUTER_MODELS.GEMINI_3_8_FLASH,
-  OPENROUTER_MODELS.MUSE_SPARK_CONTRIBUTOR,
+  OPENROUTER_MODELS.GEMINI_2_FLASH_001,
+  OPENROUTER_MODELS.GPT_4O_MINI,
   OPENROUTER_MODELS.GPT_5_NANO,
   OPENROUTER_MODELS.GPT_OSS_120B,
+  OPENROUTER_MODELS.CLAUDE_3_HAIKU,
+  OPENROUTER_MODELS.MUSE_SPARK_CONTRIBUTOR,
   OPENROUTER_MODELS.GRANITE_4_2_8B,
+  OPENROUTER_MODELS.PHI_3_5_MINI,
+  OPENROUTER_MODELS.MISTRAL_SMALL_24B,
   OPENROUTER_MODELS.QWEN_3_8_MAX,
   // ── Tier 3: Free models ──
   OPENROUTER_MODELS.OPENROUTER_FREE,
+  OPENROUTER_MODELS.GEMINI_2_FLASH_FREE,
+  OPENROUTER_MODELS.GEMINI_2_PRO_FREE,
+  OPENROUTER_MODELS.DEEPSEEK_R1_FREE,
+  OPENROUTER_MODELS.DEEPSEEK_CHAT_FREE,
+  OPENROUTER_MODELS.LLAMA_3_3_70B_FREE,
+  OPENROUTER_MODELS.QWEN_CODER_32B_FREE,
+  OPENROUTER_MODELS.MISTRAL_SMALL_FREE,
+  OPENROUTER_MODELS.NEMOTRON_70B_FREE,
   OPENROUTER_MODELS.NEMOTRON_NANO_OMNI,
   OPENROUTER_MODELS.NEX_N2_5_PRO,
   OPENROUTER_MODELS.NEX_N2_5_MINI,
@@ -134,6 +182,15 @@ const LAST_RESORT_MODEL = OPENROUTER_MODELS.OPENROUTER_AUTO;
 
 const DEFAULT_MODEL  = OPENROUTER_MODELS.LAGUNA_S_2_1;
 const COMPLEX_MODEL  = OPENROUTER_MODELS.NEMOTRON_3_ULTRA;
+
+// ---------------------------------------------------------------------------
+// AgentRouter Configuration — Alternative to OpenRouter
+// ---------------------------------------------------------------------------
+const AGENTROUTER_DEFAULTS = {
+  baseUrl: process.env.AGENTROUTER_BASE_URL || 'https://agentrouter.ai/v1',
+  apiKey: process.env.AGENTROUTER_API_KEY || null,
+};
+
 
 // ---------------------------------------------------------------------------
 // Complexity heuristics
@@ -232,18 +289,49 @@ const BATCH_REPAIR_SYSTEM_PROMPT = [
 ].join('\n');
 
 // ---------------------------------------------------------------------------
-// OpenRouterClient
+// OpenRouterClient (supports OpenRouter + AgentRouter dual-provider failover)
 // ---------------------------------------------------------------------------
 class OpenRouterClient {
   constructor(options = {}) {
+    // ── Provider detection: openrouter (default) or agentrouter ──
+    this.provider    = options.provider || process.env.AI_PROVIDER || 'openrouter';
     this.apiKey      = options.apiKey || process.env.OPENROUTER_API_KEY;
     this.model       = options.model  || selectModel(options.scanContext);
     this.maxTokens   = options.maxTokens   || 1024;
     this.temperature = options.temperature || 0.3;
-    this.timeout     = options.timeout     || parseInt(process.env.OPENROUTER_TIMEOUT || '30000', 10);
-    this.mockMode    = options.mockMode !== undefined ? options.mockMode : !this.apiKey;
-    this.baseUrl     = 'https://openrouter.ai/api/v1';
+    this.timeout     = options.timeout     || parseInt(process.env.OPENROUTER_TIMEOUT || '8000', 10);
     this.maxRetries  = options.maxRetries || 1;
+
+    // ── OpenRouter config ──
+    this.openrouterBaseUrl = 'https://openrouter.ai/api/v1';
+    this.openrouterApiKey  = options.apiKey || process.env.OPENROUTER_API_KEY || null;
+
+    // ── AgentRouter config (alternative provider) ──
+    this.agentrouterBaseUrl = options.agentrouterBaseUrl || AGENTROUTER_DEFAULTS.baseUrl;
+    this.agentrouterApiKey  = options.agentrouterApiKey || AGENTROUTER_DEFAULTS.apiKey || null;
+
+    // ── Active router selection ──
+    if (this.provider === 'agentrouter' && this.agentrouterApiKey) {
+      this.baseUrl = this.agentrouterBaseUrl;
+      this.apiKey  = this.agentrouterApiKey;
+    } else if (this.openrouterApiKey) {
+      this.baseUrl = this.openrouterBaseUrl;
+      this.apiKey  = this.openrouterApiKey;
+      this.provider = 'openrouter';
+    } else if (this.agentrouterApiKey) {
+      this.baseUrl = this.agentrouterBaseUrl;
+      this.apiKey  = this.agentrouterApiKey;
+      this.provider = 'agentrouter';
+    } else {
+      this.baseUrl = this.openrouterBaseUrl;
+    }
+
+    this.mockMode = options.mockMode !== undefined ? options.mockMode : !this.apiKey;
+
+    // Cross-router failover: if both keys exist, we can switch routers on failure
+    this._hasOpenRouter  = Boolean(this.openrouterApiKey);
+    this._hasAgentRouter = Boolean(this.agentrouterApiKey);
+    this._canCrossFailover = this._hasOpenRouter && this._hasAgentRouter;
   }
 
   // ── Primary interface (matches anthropic.js) ─────────────────────────────
@@ -339,20 +427,15 @@ class OpenRouterClient {
       { role: 'user',   content: prompt },
     ];
 
-    // Build the prioritized model list:
-    // If free tier is requested, prioritize verified free models
+    // Build prioritized fast fallback chain (max 3-4 candidates to prevent long terminal hangs)
     const isFreeTier = preferredModel === 'free' || (preferredModel && (preferredModel.includes('free') || preferredModel === 'openrouter/free'));
     const primary = preferredModel === 'free' ? OPENROUTER_MODELS.OPENROUTER_FREE : (preferredModel || this.model || OPENROUTER_MODELS.MINIMAX_M3);
-    const baseChain = isFreeTier ? FREE_MODEL_FALLBACK_CHAIN : MODEL_FALLBACK_CHAIN;
-    const modelsToTry = [primary];
-    for (const m of baseChain) {
-      if (!modelsToTry.includes(m)) modelsToTry.push(m);
-    }
-    for (const m of MODEL_FALLBACK_CHAIN) {
-      if (!modelsToTry.includes(m)) modelsToTry.push(m);
-    }
-    if (!modelsToTry.includes(LAST_RESORT_MODEL)) {
-      modelsToTry.push(LAST_RESORT_MODEL);
+    const fallback1 = isFreeTier ? OPENROUTER_MODELS.NEMOTRON_NANO_OMNI : OPENROUTER_MODELS.DEEPSEEK_V4_1_FLASH;
+    const fallback2 = isFreeTier ? OPENROUTER_MODELS.NEMOTRON_3_5_LIGHTNING : OPENROUTER_MODELS.NORTH_MINI_CODE;
+    const candidatePool = [primary, fallback1, fallback2, LAST_RESORT_MODEL];
+    const modelsToTry = [];
+    for (const m of candidatePool) {
+      if (m && !modelsToTry.includes(m)) modelsToTry.push(m);
     }
 
     let lastError = null;
@@ -372,6 +455,18 @@ class OpenRouterClient {
         lastError = new Error(`Model ${modelCandidate} returned empty or invalid snippet`);
       } catch (err) {
         lastError = err;
+      }
+
+      // If credit is exhausted (HTTP 402), immediately switch remaining candidates to active free models
+      if (/402|credit|balance|insufficient/i.test(lastError?.message || '')) {
+        const freeCandidates = [
+          OPENROUTER_MODELS.NEMOTRON_NANO_OMNI,
+          OPENROUTER_MODELS.NEMOTRON_3_5_LIGHTNING,
+          OPENROUTER_MODELS.NORTH_MINI_CODE,
+          OPENROUTER_MODELS.LAGUNA_S_2_1,
+        ];
+        const tried = modelsToTry.slice(0, i + 1);
+        modelsToTry.splice(i + 1, modelsToTry.length - (i + 1), ...freeCandidates.filter(m => !tried.includes(m)));
       }
 
       // Check if OpenRouter recommended a replacement model slug
@@ -464,20 +559,15 @@ class OpenRouterClient {
       { role: 'user',   content: prompt },
     ];
 
-    // Build the prioritized model list:
-    // If free tier is requested, prioritize verified free models
+    // Build prioritized fast fallback chain (max 3-4 candidates to prevent long terminal hangs)
     const isFreeTier = preferredModel === 'free' || (preferredModel && (preferredModel.includes('free') || preferredModel === 'openrouter/free'));
     const primary = preferredModel === 'free' ? OPENROUTER_MODELS.OPENROUTER_FREE : (preferredModel || this.model || OPENROUTER_MODELS.MINIMAX_M3);
-    const baseChain = isFreeTier ? FREE_MODEL_FALLBACK_CHAIN : MODEL_FALLBACK_CHAIN;
-    const modelsToTry = [primary];
-    for (const m of baseChain) {
-      if (!modelsToTry.includes(m)) modelsToTry.push(m);
-    }
-    for (const m of MODEL_FALLBACK_CHAIN) {
-      if (!modelsToTry.includes(m)) modelsToTry.push(m);
-    }
-    if (!modelsToTry.includes(LAST_RESORT_MODEL)) {
-      modelsToTry.push(LAST_RESORT_MODEL);
+    const fallback1 = isFreeTier ? OPENROUTER_MODELS.NEMOTRON_NANO_OMNI : OPENROUTER_MODELS.DEEPSEEK_V4_1_FLASH;
+    const fallback2 = isFreeTier ? OPENROUTER_MODELS.NEMOTRON_3_5_LIGHTNING : OPENROUTER_MODELS.NORTH_MINI_CODE;
+    const candidatePool = [primary, fallback1, fallback2, LAST_RESORT_MODEL];
+    const modelsToTry = [];
+    for (const m of candidatePool) {
+      if (m && !modelsToTry.includes(m)) modelsToTry.push(m);
     }
 
     let lastError = null;
@@ -497,6 +587,18 @@ class OpenRouterClient {
         lastError = new Error(`Model ${modelCandidate} returned empty or invalid batch fixes`);
       } catch (err) {
         lastError = err;
+      }
+
+      // If credit is exhausted (HTTP 402), immediately switch remaining candidates to active free models
+      if (/402|credit|balance|insufficient/i.test(lastError?.message || '')) {
+        const freeCandidates = [
+          OPENROUTER_MODELS.NEMOTRON_NANO_OMNI,
+          OPENROUTER_MODELS.NEMOTRON_3_5_LIGHTNING,
+          OPENROUTER_MODELS.NORTH_MINI_CODE,
+          OPENROUTER_MODELS.LAGUNA_S_2_1,
+        ];
+        const tried = modelsToTry.slice(0, i + 1);
+        modelsToTry.splice(i + 1, modelsToTry.length - (i + 1), ...freeCandidates.filter(m => !tried.includes(m)));
       }
 
       // Check if OpenRouter recommended a replacement model slug
@@ -633,7 +735,11 @@ class OpenRouterClient {
     }
 
     // Fallback: walk the chain, skipping the model we already tried
-    for (const fallbackModel of MODEL_FALLBACK_CHAIN) {
+    const isZeroCredit = /402|credit|balance|insufficient/i.test(lastError?.message || '');
+    let fallbackChain = isZeroCredit ? FREE_MODEL_FALLBACK_CHAIN : MODEL_FALLBACK_CHAIN;
+
+    for (let i = 0; i < fallbackChain.length; i++) {
+      const fallbackModel = fallbackChain[i];
       if (fallbackModel === this.model) continue;
       try {
         const response = await this._callAPI(messages, fallbackModel);
@@ -641,6 +747,11 @@ class OpenRouterClient {
         return this._parseResponse(response);
       } catch (err) {
         lastError = err;
+        if (/402|credit|balance|insufficient/i.test(err?.message || '') && fallbackChain !== FREE_MODEL_FALLBACK_CHAIN) {
+          fallbackChain = FREE_MODEL_FALLBACK_CHAIN;
+          i = -1;
+          continue;
+        }
       }
 
       // Check if OpenRouter recommended a replacement model slug
@@ -667,16 +778,40 @@ class OpenRouterClient {
       }
     }
 
-    throw new Error(`AI analysis failed after trying all models including openrouter/auto: ${lastError?.message}`);
+    // ── Cross-Router Failover: switch to AgentRouter (or vice-versa) ──
+    if (this._canCrossFailover) {
+      const altProvider = this.provider === 'openrouter' ? 'agentrouter' : 'openrouter';
+      const altBaseUrl  = altProvider === 'agentrouter' ? this.agentrouterBaseUrl : this.openrouterBaseUrl;
+      const altApiKey   = altProvider === 'agentrouter' ? this.agentrouterApiKey : this.openrouterApiKey;
+
+      // Try the top 5 models on the alternate router
+      const topModels = MODEL_FALLBACK_CHAIN.slice(0, 5);
+      for (const altModel of topModels) {
+        try {
+          const response = await this._callAPI(messages, altModel, this.maxTokens, altBaseUrl, altApiKey);
+          this.model    = altModel;
+          this.provider = altProvider;
+          this.baseUrl  = altBaseUrl;
+          this.apiKey   = altApiKey;
+          return this._parseResponse(response);
+        } catch (err) {
+          lastError = err;
+        }
+      }
+    }
+
+    throw new Error(`AI analysis failed after trying all models on ${this.provider}${this._canCrossFailover ? ' and alternate router' : ''}: ${lastError?.message}`);
   }
 
   // ── Raw HTTP call (node:https, zero deps) ─────────────────────────────────
 
-  async _callAPI(messages, model, maxTokens = this.maxTokens) {
+  async _callAPI(messages, model, maxTokens = this.maxTokens, overrideBaseUrl = null, overrideApiKey = null) {
     const https = require('https');
+    const effectiveBaseUrl = overrideBaseUrl || this.baseUrl;
+    const effectiveApiKey  = overrideApiKey || this.apiKey;
 
     return new Promise((resolve, reject) => {
-      const url = new URL(`${this.baseUrl}/chat/completions`);
+      const url = new URL(`${effectiveBaseUrl}/chat/completions`);
 
       const postData = JSON.stringify({
         model,
@@ -692,7 +827,7 @@ class OpenRouterClient {
         method: 'POST',
         headers: {
           'Content-Type':   'application/json',
-          'Authorization':  `Bearer ${this.apiKey}`,
+          'Authorization':  `Bearer ${effectiveApiKey}`,
           'HTTP-Referer':   'https://github.com/codesentry',
           'X-Title':        'CodeSentry',
           'Content-Length':  Buffer.byteLength(postData),
