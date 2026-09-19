@@ -19,8 +19,9 @@ Run instantly without cloning or installing dependencies:
 # Run directly from GitHub with zero install:
 npx github:kaunteyaarjun/code_inspection_tool scan .
 
-# Or scan using global npm package:
-npx codesentry scan .
+# Or install globally from GitHub:
+npm install -g github:kaunteyaarjun/code_inspection_tool
+codesentry scan .
 ```
 
 On first run, CodeSentry interactively configures your free OpenRouter API key and saves it to `~/.codesentry/config.json`. Subsequent runs never prompt again.
