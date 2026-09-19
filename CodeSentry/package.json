@@ -4,8 +4,8 @@
   "description": "CLI-based codebase inspection and DevSecOps tool with AI-powered analysis",
   "main": "src/core/scan.js",
   "bin": {
-    "codesentry": "./bin/codesentry.js",
-    "codesentry-ai": "./bin/codesentry.js"
+    "codesentry": "bin/codesentry.js",
+    "codesentry-ai": "bin/codesentry.js"
   },
   "preferGlobal": true,
   "files": [
@@ -38,7 +38,7 @@
   "author": "CodeSentry Team",
   "repository": {
     "type": "git",
-    "url": "https://github.com/kaunteyaarjun/code_inspection_tool.git"
+    "url": "git+https://github.com/kaunteyaarjun/code_inspection_tool.git"
   },
   "bugs": {
     "url": "https://github.com/kaunteyaarjun/code_inspection_tool/issues"
