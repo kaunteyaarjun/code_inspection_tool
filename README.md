@@ -69,7 +69,7 @@ When a codebase is clean (**0 vulnerabilities / 0 bugs / perfect**):
 
 ### Option A: Global CLI Install
 ```bash
-npm install -g codesentry
+npm install -g codesentry-ai
 
 # Now available globally from any terminal
 codesentry scan .
