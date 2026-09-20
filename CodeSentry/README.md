@@ -7,7 +7,7 @@
 [![Pure Node](https://img.shields.io/badge/Docker-Not%20Required-success.svg)](#zero-docker-required)
 [![Architecture & Workflow](https://img.shields.io/badge/Architecture-workflow.md-blue.svg)](workflow.md)
 
-CodeSentry inspects JavaScript, TypeScript, and Python codebases for security vulnerabilities, logic bugs, algorithmic bottlenecks, and resource leaks. Built with a terminal-native dark aesthetic inspired by OpenCode, it offers built-in security detection, interactive code repairs, and dynamic AI-powered security hardening.
+CodeSentry inspects JavaScript, TypeScript, and Python codebases for security vulnerabilities, logic bugs, algorithmic bottlenecks, and resource leaks. Built with a terminal-native dark aesthetic and interactive split-pane TUI dashboard, it offers built-in security detection, interactive code repairs, and dynamic AI-powered security hardening.
 
 ---
 
@@ -16,12 +16,18 @@ CodeSentry inspects JavaScript, TypeScript, and Python codebases for security vu
 Run instantly without cloning or installing dependencies:
 
 ```bash
-# Run directly from GitHub with zero install:
-npx github:kaunteyaarjun/code_inspection_tool scan .
+# Run directly via npx (zero install):
+npx codesentry-ai scan .
 
-# Or scan using global npm package:
-npx codesentry scan .
+# Or install globally from npm:
+npm install -g codesentry-ai
+codesentry scan .
+
+# Or install directly from GitHub:
+npm install -g github:raelx20/codesentry
 ```
+
+> **Note**: Both `codesentry` and `codesentry-ai` command aliases work identically in your shell.
 
 On first run, CodeSentry interactively configures your free OpenRouter API key and saves it to `~/.codesentry/config.json`. Subsequent runs never prompt again.
 
@@ -63,7 +69,7 @@ When a codebase is clean (**0 vulnerabilities / 0 bugs / perfect**):
 
 ### Option A: Global CLI Install
 ```bash
-npm install -g codesentry
+npm install -g codesentry-ai
 
 # Now available globally from any terminal
 codesentry scan .
@@ -71,18 +77,20 @@ codesentry auth
 codesentry model
 ```
 
-### Option B: Project Dev Dependency
+### Option B: Zero-Install via npx
 ```bash
-npm install --save-dev codesentry
-
-# Run via npx
-npx codesentry scan .
+npx codesentry-ai scan .
 ```
 
-### Option C: Clone & Run from Source
+### Option C: Install directly from GitHub
 ```bash
-git clone https://github.com/kaunteyaarjun/code_inspection_tool.git
-cd code_inspection_tool/CodeSentry
+npm install -g github:raelx20/codesentry
+```
+
+### Option D: Clone & Run from Source
+```bash
+git clone https://github.com/raelx20/codesentry.git
+cd codesentry/CodeSentry
 npm install
 npm link # or node bin/codesentry.js scan .
 ```

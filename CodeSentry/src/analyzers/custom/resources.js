@@ -2,13 +2,18 @@ function analyzeResources(filePath, content) {
   const findings = [];
   const lines = content.split('\n');
   const fullContent = content;
+  const isPy = (filePath || '').endsWith('.py') || (filePath || '').endsWith('.pyw');
 
-  checkSetIntervalNoClear(fullContent, lines, findings, filePath);
-  checkAddEventListenerNoRemove(fullContent, lines, findings, filePath);
-  checkStreamNoClose(fullContent, lines, findings, filePath);
-  checkPythonOpenNoWith(lines, findings, filePath);
-  checkUnboundedCache(fullContent, lines, findings, filePath);
-  checksetTimeoutAccumulation(lines, findings, filePath);
+  if (isPy) {
+    checkPythonOpenNoWith(lines, findings, filePath);
+    checkUnboundedCache(fullContent, lines, findings, filePath);
+  } else {
+    checkSetIntervalNoClear(fullContent, lines, findings, filePath);
+    checkAddEventListenerNoRemove(fullContent, lines, findings, filePath);
+    checkStreamNoClose(fullContent, lines, findings, filePath);
+    checkUnboundedCache(fullContent, lines, findings, filePath);
+    checksetTimeoutAccumulation(lines, findings, filePath);
+  }
 
   return findings;
 }

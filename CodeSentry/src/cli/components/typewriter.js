@@ -1,6 +1,5 @@
 /**
  * CodeSentry Typewriter Component & Diagnostics Catalog
- * Inspired by InkUI Typewriter & OpenCode
  *
  * Provides character-by-character typewriter animation and a curated catalog
  * of authentic DevSecOps & programming-themed telemetry status messages.

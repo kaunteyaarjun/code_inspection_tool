@@ -63,5 +63,27 @@ describe('CommandParser', () => {
     assert.ok(help.includes('ON by default'));
     assert.ok(help.includes('model'));
     assert.ok(help.includes('auth'));
+    assert.ok(help.includes('--fix'));
+    assert.ok(help.includes('--yes'));
+  });
+
+  it('should parse --fix and --auto-fix flags', () => {
+    const parser = createCommandParser();
+    const parsed1 = parser.parse(['scan', '.', '--fix']);
+    assert.equal(parsed1.options.fix, true);
+
+    const parsed2 = parser.parse(['scan', '.', '--auto-fix']);
+    assert.equal(parsed2.options.fix, true);
+  });
+
+  it('should parse --yes and -y flags enabling automated repair without manual approval', () => {
+    const parser = createCommandParser();
+    const parsed1 = parser.parse(['scan', '.', '--yes']);
+    assert.equal(parsed1.options.yes, true);
+    assert.equal(parsed1.options.fix, true);
+
+    const parsed2 = parser.parse(['scan', '.', '-y']);
+    assert.equal(parsed2.options.yes, true);
+    assert.equal(parsed2.options.fix, true);
   });
 });

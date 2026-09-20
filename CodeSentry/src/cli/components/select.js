@@ -1,6 +1,5 @@
 /**
  * CodeSentry Interactive Select Component
- * Inspired by InkUI & OpenCode
  *
  * Usage:
  *   const { Select } = require('./components/select');

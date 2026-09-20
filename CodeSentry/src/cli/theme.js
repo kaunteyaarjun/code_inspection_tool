@@ -1,6 +1,5 @@
 /**
  * CodeSentry Aesthetic Theme & Typography Engine
- * Inspired by OpenCode (https://github.com/anomalyco/opencode)
  *
  * Features:
  * - 3D block pixel typography header with drop shadow (Horizontally Centered)
@@ -43,7 +42,7 @@ const underline = (s) => `${esc('4m')}${s}${reset}`;
 const fgRgb = (r, g, b) => (s) => `${esc(`38;2;${r};${g};${b}m`)}${s}${reset}`;
 const bgRgb = (r, g, b) => (s) => `${esc(`48;2;${r};${g};${b}m`)}${s}${reset}`;
 
-// ── OpenCode Palette ─────────────────────────────────────────────────────────
+// ── CodeSentry Palette ─────────────────────────────────────────────────────────
 const colors = {
   // Brand / Accents
   cyan: fgRgb(56, 189, 248),        // #38bdf8 electric cyan
@@ -113,10 +112,10 @@ function center(text, termWidth = getTerminalWidth()) {
   }).join('\n');
 }
 
-// ── OpenCode 3D Pixel Typography Header (Centered) ───────────────────────────
+// ── CodeSentry 3D Pixel Typography Header (Centered) ───────────────────────────
 /**
  * Renders the CodeSentry logo in chunky pixel-art typography with a
- * shaded drop shadow, centered horizontally like OpenCode.
+ * shaded drop shadow, centered horizontally.
  */
 function renderLogo() {
   const termWidth = getTerminalWidth();
@@ -260,7 +259,7 @@ function wrapText(str, maxWidth) {
   return lines;
 }
 
-// ── OpenCode Dark Container / Card (Centered + Solid Black Fill) ─────────────
+// ── CodeSentry Dark Container / Card (Centered + Solid Black Fill) ─────────────
 function card(lines, options = {}) {
   const {
     accentColor = colors.cyan,
@@ -275,7 +274,7 @@ function card(lines, options = {}) {
   // Defensive flattening: split any line containing \n so borders never misalign
   const flattened = (lines || []).flatMap(l => String(l || '').split('\n'));
 
-  // Clean compact 72-column OpenCode standard width
+  // Clean compact 72-column standard width
   const defaultWidth = 72;
   const targetWidth = requestedWidth || defaultWidth;
   const width = Math.max(40, Math.min(termWidth - 2, targetWidth));
@@ -371,7 +370,7 @@ function progressBar(value, max = 100, length = 20) {
   return `${filledBar}${emptyBar} ${bold(colors.white(`${value}/${max}`))}`;
 }
 
-// ── Code Snippet Extraction (OpenCode Style) ─────────────────────────────────
+// ── Code Snippet Extraction ───────────────────────────────────────────────────
 function getCodeSnippet(filePath, targetLine, radius = 2) {
   if (!filePath || !targetLine || typeof targetLine !== 'number') return null;
   try {
@@ -395,7 +394,7 @@ function getCodeSnippet(filePath, targetLine, radius = 2) {
   }
 }
 
-// ── OpenCode Header Session Card ─────────────────────────────────────────────
+// ── CodeSentry Header Session Card ─────────────────────────────────────────────
 function renderSessionCard(projectPath, options = {}) {
   const { aiModel = 'auto', languages = [] } = options;
   const langStr = languages.length > 0 ? languages.join(' · ') : 'auto-detect';

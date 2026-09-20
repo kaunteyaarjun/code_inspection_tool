@@ -1,4 +1,10 @@
 function analyzeEfficiency(filePath, content) {
+  const isPy = (filePath || '').endsWith('.py') || (filePath || '').endsWith('.pyw');
+  if (isPy) {
+    // JavaScript AST and brace-syntax checks do not apply to Python code
+    return [];
+  }
+
   const findings = [];
   const lines = content.split('\n');
 
