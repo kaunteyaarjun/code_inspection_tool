@@ -137,6 +137,13 @@ async function main() {
     process.exit(0);
   }
 
+  // ── Standalone 'demo' command (Hackathon Showcase) ─────────────────────────
+  if (parsed.command === COMMANDS.DEMO) {
+    const { runHackathonDemo } = require(path.join(packageRoot, 'src', 'cli', 'demo'));
+    await runHackathonDemo();
+    process.exit(0);
+  }
+
   // ── Standalone 'auth' command ──────────────────────────────────────────────
   if (parsed.command === COMMANDS.AUTH) {
     await auth.handleAuthCommand();

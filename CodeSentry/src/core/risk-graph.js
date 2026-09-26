@@ -55,8 +55,10 @@ class SoftwareRiskGraph {
       });
 
       // Link to file component if in same file
+      const normFindingFile = String(f.file || '').replace(/\\/g, '/').toLowerCase();
       for (const [nodeId, node] of this.nodes.entries()) {
-        if (node.file === f.file && node.type !== 'VULNERABILITY') {
+        const normNodeFile = String(node.file || '').replace(/\\/g, '/').toLowerCase();
+        if (normNodeFile === normFindingFile && node.type !== 'VULNERABILITY') {
           if (Math.abs(node.line - (f.line || 1)) < 25) {
             this.edges.push({
               from: nodeId,
@@ -147,13 +149,16 @@ class SoftwareRiskGraph {
     const vulns = Array.from(this.nodes.values()).filter((n) => n.type === 'VULNERABILITY');
 
     for (const ep of entrypoints) {
+      const normEpFile = String(ep.file || '').replace(/\\/g, '/').toLowerCase();
       // Find vulns in the same file or connected components
-      const correlatedVulns = vulns.filter(
-        (v) => v.file === ep.file || (v.severity === 'BLOCKER' || v.severity === 'HIGH')
-      );
+      const correlatedVulns = vulns.filter((v) => {
+        const normVulnFile = String(v.file || '').replace(/\\/g, '/').toLowerCase();
+        return normVulnFile === normEpFile || (v.severity === 'BLOCKER' || v.severity === 'HIGH');
+      });
 
       for (const vuln of correlatedVulns) {
-        if (vuln.file === ep.file) {
+        const normVulnFile = String(vuln.file || '').replace(/\\/g, '/').toLowerCase();
+        if (normVulnFile === normEpFile) {
           this.attackPaths.push({
             id: `path-${ep.id}-${vuln.id}`,
             entrypoint: ep.label,

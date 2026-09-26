@@ -2,6 +2,7 @@ const COMMANDS = {
   SCAN: 'scan',
   DEPLOYGUARD: 'deployguard',
   AUTOGRAD: 'autograd',
+  DEMO: 'demo',
   MODEL: 'model',
   AUTH: 'auth',
   LOGIN: 'login',
@@ -189,6 +190,7 @@ Usage: codesentry <command> [options]
 Commands:
   scan [path]         Scan a project (defaults to current directory)
   deployguard [path]  Pre-deployment risk analysis & production readiness gate
+  demo                Instant live hackathon showcase (AutoGrad, DeployGuard, ModelShield & Healing)
   model               Interactively switch or select the active AI model
   auth                Configure or view OpenRouter API key & credentials
   version             Show version
