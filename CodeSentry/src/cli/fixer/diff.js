@@ -15,14 +15,19 @@ const theme = require('../theme');
  * @param {Object} fix - The proposed fix (oldSnippet, newSnippet, explanation)
  * @returns {string} Colorized terminal card
  */
-function formatDiffPreview(finding, fix) {
+function formatDiffPreview(finding, fix, options = {}) {
   const c = theme.colors;
   const lines = [
     `${c.cyan('▎ File:')}    ${c.brightWhite(finding.file)}${finding.line ? c.gray(`:${finding.line}`) : ''}`,
     `${c.cyan('▎ Issue:')}   ${theme.severityBadge(finding.severity)} ${c.white(finding.message)}`,
     `${c.cyan('▎ Fix:')}     ${c.gray(fix.explanation || finding.suggestedFix || 'Code correction')}`,
-    `${c.darkGray('─'.repeat(68))}`,
   ];
+
+  if (Array.isArray(options.impactedFiles) && options.impactedFiles.length > 0) {
+    lines.push(`${c.yellow('▎ Impact:')}  ${c.yellow(`⚠️ Used by ${options.impactedFiles.length} other file${options.impactedFiles.length === 1 ? '' : 's'}`)} ${c.gray(`(${options.impactedFiles.slice(0, 3).join(', ')}${options.impactedFiles.length > 3 ? '...' : ''})`)}`);
+  }
+
+  lines.push(`${c.darkGray('─'.repeat(68))}`);
 
   const oldLines = (fix.oldSnippet || '').split('\n');
   for (const l of oldLines) {

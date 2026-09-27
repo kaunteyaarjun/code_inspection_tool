@@ -818,8 +818,15 @@ async function main() {
               continue;
             }
 
+            const impactedFiles = (scanResult.riskGraph?.getImpactedFiles || scanResult.riskGraph?.graph?.getImpactedFiles)
+              ? (scanResult.riskGraph.getImpactedFiles || scanResult.riskGraph.graph.getImpactedFiles.bind(scanResult.riskGraph.graph))(targetFinding.file)
+              : [];
+
             output.print('');
-            output.print(fixer.formatDiffPreview(targetFinding, fix));
+            output.print(fixer.formatDiffPreview(targetFinding, fix, { impactedFiles }));
+            if (impactedFiles.length > 0) {
+              output.print(`  ${theme.colors.yellow('⚠️  Impact Warning:')} This file is used by ${theme.colors.cyan(impactedFiles.length)} other file${impactedFiles.length === 1 ? '' : 's'}: ${theme.colors.gray(impactedFiles.slice(0, 3).join(', '))}${impactedFiles.length > 3 ? theme.colors.gray(` (+${impactedFiles.length - 3} more)`) : ''}`);
+            }
             output.print('');
 
             const confirmAction = await Select({
@@ -829,7 +836,9 @@ async function main() {
                   label: 'Yes, apply fix to file',
                   value: 'confirm',
                   badge: 'APPLY',
-                  description: `Write changes to ${targetFinding.file}`,
+                  description: impactedFiles.length > 0
+                    ? `Write changes to ${targetFinding.file} (used by ${impactedFiles.length} other files)`
+                    : `Write changes to ${targetFinding.file}`,
                 },
                 {
                   label: 'No, skip / cancel',
