@@ -199,7 +199,8 @@ async function main() {
     const formatter = createFormatter();
 
     // Mutable state for the interactive loop
-    let currentModel = parsed.options.aiModel || process.env.OPENROUTER_MODEL || 'auto';
+    let currentProvider = (process.env.CODESENTRY_AI_PROVIDER || (process.env.OPENAI_API_KEY && !process.env.OPENROUTER_API_KEY ? 'openai' : 'openrouter')).toLowerCase();
+    let currentModel = parsed.options.aiModel || (currentProvider === 'openai' ? (process.env.OPENAI_MODEL || 'gpt-4o-mini') : (process.env.OPENROUTER_MODEL || 'auto'));
     let currentNoAi = Boolean(parsed.options.noAi || currentModel === 'none');
     let isFirstRun = true;
     let lastReportPath = null;
@@ -210,12 +211,15 @@ async function main() {
         jsonMode,
         noAi: currentNoAi,
       });
-      if (authResult.skipped && !process.env.OPENROUTER_API_KEY) {
+      if (authResult.skipped && !process.env.OPENROUTER_API_KEY && !process.env.OPENAI_API_KEY) {
         currentNoAi = true;
         currentModel = 'none';
       } else if (authResult.isConfigured) {
         if (!parsed.options.aiModel && authResult.model) {
           currentModel = authResult.model;
+        }
+        if (authResult.provider) {
+          currentProvider = authResult.provider;
         }
       }
     }
@@ -234,6 +238,7 @@ async function main() {
         }
         output.print(theme.renderSessionCard(parsed.projectPath, {
           aiModel: currentNoAi ? 'disabled (static)' : currentModel,
+          provider: currentProvider,
         }));
         output.print('');
       }
@@ -251,6 +256,7 @@ async function main() {
           jsonMode,
           verbose,
           aiEnabled: !currentNoAi,
+          aiProvider: currentProvider,
           onProgress: (state) => {
             progress.update(state);
           },

@@ -114,20 +114,40 @@ function loadGlobalConfig(customPath = null) {
     process.env.AGENTROUTER_BASE_URL = config.agentrouter_base_url || config.omniroute_base_url;
   }
 
+  if (!process.env.OPENAI_API_KEY && config.openai_api_key) {
+    process.env.OPENAI_API_KEY = config.openai_api_key;
+  }
+
+  if (!process.env.OPENAI_MODEL && config.openai_model) {
+    process.env.OPENAI_MODEL = config.openai_model;
+  }
+
   if (!process.env.CODESENTRY_AI_PROVIDER && config.ai_provider) {
     process.env.CODESENTRY_AI_PROVIDER = config.ai_provider;
   }
 
-  const activeProvider = (process.env.CODESENTRY_AI_PROVIDER || config.ai_provider || 'openrouter').toLowerCase();
+  const activeProvider = (
+    process.env.CODESENTRY_AI_PROVIDER ||
+    config.ai_provider ||
+    (process.env.OPENAI_API_KEY && !process.env.OPENROUTER_API_KEY ? 'openai' : 'openrouter')
+  ).toLowerCase();
+
+  let resolvedApiKey = process.env.OPENROUTER_API_KEY || null;
+  if (activeProvider === 'openai') {
+    resolvedApiKey = process.env.OPENAI_API_KEY || null;
+  } else if (activeProvider === 'agentrouter') {
+    resolvedApiKey = process.env.AGENTROUTER_API_KEY || null;
+  }
 
   return {
     config,
     provider: activeProvider,
-    apiKey: activeProvider === 'agentrouter' ? (process.env.AGENTROUTER_API_KEY || null) : (process.env.OPENROUTER_API_KEY || null),
+    apiKey: resolvedApiKey,
     openrouterKey: process.env.OPENROUTER_API_KEY || null,
+    openaiKey: process.env.OPENAI_API_KEY || null,
     agentrouterKey: process.env.AGENTROUTER_API_KEY || null,
-    model: process.env.OPENROUTER_MODEL || config.openrouter_model || 'nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free',
-    isConfigured: Boolean(process.env.OPENROUTER_API_KEY || process.env.AGENTROUTER_API_KEY),
+    model: process.env.OPENAI_MODEL || process.env.OPENROUTER_MODEL || config.openrouter_model || 'gpt-4o-mini',
+    isConfigured: Boolean(process.env.OPENROUTER_API_KEY || process.env.OPENAI_API_KEY || process.env.AGENTROUTER_API_KEY),
   };
 }
 
