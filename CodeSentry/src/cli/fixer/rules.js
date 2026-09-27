@@ -149,6 +149,11 @@ function postProcessPythonFile(content) {
   updated = cleanedRaw.join('\n');
 
 
+  // Replace unsafe pickle deserialization with json.loads
+  if (/\bpickle\.loads?\s*\(/.test(updated)) {
+    updated = updated.replace(/\bpickle\.loads?\s*\(/g, 'json.loads(');
+  }
+
   // 1. Ensure import os
   if ((/\bos\.environ\b/.test(updated) || /\bos\.path\b/.test(updated)) && !/^import\s+os\b/m.test(updated) && !/^from\s+os\s+import/m.test(updated)) {
     updated = 'import os\n' + updated;
@@ -195,6 +200,34 @@ function postProcessPythonFile(content) {
       curLines.splice(appIdx + 1, 0, ...dbSnippet);
     } else {
       curLines.splice(0, 0, ...dbSnippet);
+    }
+    updated = curLines.join('\n');
+  }
+
+  // 5b. Ensure security headers middleware for Flask apps
+  if (/app\s*=\s*Flask\s*\(/.test(updated) && !/(?:helmet|SecurityMiddleware|Talisman|_set_security_headers)/i.test(updated)) {
+    const curLines = updated.split('\n');
+    let appIdx = -1;
+    for (let i = 0; i < curLines.length; i++) {
+      if (/app\s*=\s*Flask\s*\(/.test(curLines[i])) {
+        appIdx = i;
+        break;
+      }
+    }
+    const headersSnippet = [
+      '',
+      '# Security headers middleware (Talisman / security headers)',
+      '@app.after_request',
+      'def _set_security_headers(response):',
+      "    response.headers['X-Content-Type-Options'] = 'nosniff'",
+      "    response.headers['X-Frame-Options'] = 'DENY'",
+      "    response.headers['Content-Security-Policy'] = \"default-src 'self'\"",
+      '    return response',
+    ];
+    if (appIdx >= 0) {
+      curLines.splice(appIdx + 1, 0, ...headersSnippet);
+    } else {
+      curLines.splice(0, 0, ...headersSnippet);
     }
     updated = curLines.join('\n');
   }
@@ -916,9 +949,27 @@ function generateRuleFix(finding, fileContent) {
 
   // 23. Unused imports (Ruff F401 / ESLint no-unused-vars)
   if (finding.rule === 'F401' || (finding.message && finding.message.includes('imported but unused'))) {
-    const unusedMatch = finding.message.match(/['"]([a-zA-Z0-9_]+)['"]\s+imported but unused/);
+    const unusedMatch = finding.message.match(/[`'"]([a-zA-Z0-9_]+)[`'"]\s+imported but unused/);
     if (unusedMatch) {
       const name = unusedMatch[1];
+
+      // If json is reported unused but pickle.loads is still in the file, replace pickle.loads with json.loads!
+      if (name === 'json' && isPy && /\bpickle\.loads?\b/.test(fileContent)) {
+        for (let i = 0; i < lines.length; i++) {
+          if (/pickle\.loads?\s*\(/.test(lines[i])) {
+            const oldLine = lines[i];
+            const newLine = oldLine.replace(/pickle\.loads?\s*\(/g, 'json.loads(');
+            return {
+              startLine: i + 1,
+              endLine: i + 1,
+              oldSnippet: oldLine,
+              newSnippet: newLine,
+              explanation: 'Replaced hazardous pickle deserialization with json.loads()',
+            };
+          }
+        }
+      }
+
       let fixedLine = originalLine
         .replace(new RegExp(`\\b${name}\\s*,\\s*`, 'g'), '')
         .replace(new RegExp(`,\\s*\\b${name}\\b`, 'g'), '')
