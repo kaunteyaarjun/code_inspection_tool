@@ -693,55 +693,101 @@ function generateRuleFix(finding, fileContent) {
     (isPy && finding.message && (finding.message.includes('eval') || finding.message.includes('exec')));
 
   if (isPyCodeInj) {
-    // Check eval
-    const evalTarget = getTargetLine(lines, lineIdx, (l) => isCodeLine(l, true) && /\beval\s*\(/.test(l));
-    if (evalTarget) {
-      return {
-        startLine: evalTarget.lineIdx + 1,
-        endLine: evalTarget.lineIdx + 1,
-        oldSnippet: evalTarget.line,
-        newSnippet: evalTarget.line.replace(/\beval\s*\(([^)]+)\)/, 'ast.literal_eval($1)'),
-        explanation: 'Replaced unsafe eval() with ast.literal_eval() for safe data parsing',
-      };
-    }
+    const isExec = finding.rule === 'B102' || finding.rule === 'S102' || (finding.rule && finding.rule.includes('exec')) || (finding.message && finding.message.includes('exec'));
+    const isEval = finding.rule === 'B307' || finding.rule === 'S307' || (finding.rule && finding.rule.includes('eval')) || (finding.message && finding.message.includes('eval'));
 
-    // Check exec
-    const execTarget = getTargetLine(lines, lineIdx, (l) => isCodeLine(l, true) && /\bexec\s*\(/.test(l));
-    if (execTarget) {
-      const indentMatch = execTarget.line.match(/^(\s*)/);
-      const indent = indentMatch ? indentMatch[1] : '';
+    // If explicit exec finding, prioritize execTarget!
+    if (isExec) {
+      const execTarget = getTargetLine(lines, lineIdx, (l) => isCodeLine(l, true) && /\bexec\s*\(/.test(l));
+      if (execTarget) {
+        const indentMatch = execTarget.line.match(/^(\s*)/);
+        const indent = indentMatch ? indentMatch[1] : '';
 
-      // Check preceding assignment
-      let prevAssignmentIdx = -1;
-      for (let j = Math.max(0, execTarget.lineIdx - 5); j < execTarget.lineIdx; j++) {
-        if (/^\s*[a-zA-Z_]\w*\s*=\s*request\./.test(lines[j])) {
-          prevAssignmentIdx = j;
-          break;
+        let prevAssignmentIdx = -1;
+        for (let j = Math.max(0, execTarget.lineIdx - 5); j < execTarget.lineIdx; j++) {
+          if (/^\s*[a-zA-Z_]\w*\s*=\s*request\./.test(lines[j])) {
+            prevAssignmentIdx = j;
+            break;
+          }
         }
-      }
 
-      const execFixed = `${indent}# Dynamic execution disabled by CodeSentry\n${indent}raise NotImplementedError("Dynamic execution disabled")`;
+        const execFixed = `${indent}# Dynamic execution disabled by CodeSentry\n${indent}raise NotImplementedError("Dynamic execution disabled")`;
 
-      if (prevAssignmentIdx >= 0) {
-        const prevLine = lines[prevAssignmentIdx];
-        const prevVar = prevLine.match(/^\s*([a-zA-Z_]\w*)\s*=/)[1];
-        const prevFixed = prevLine.replace(new RegExp(`\\b${prevVar}\\b`), `_${prevVar}`);
+        if (prevAssignmentIdx >= 0) {
+          const prevLine = lines[prevAssignmentIdx];
+          const prevVar = prevLine.match(/^\s*([a-zA-Z_]\w*)\s*=/)[1];
+          const prevFixed = prevLine.replace(new RegExp(`\\b${prevVar}\\b`), `_${prevVar}`);
+          return {
+            startLine: prevAssignmentIdx + 1,
+            endLine: execTarget.lineIdx + 1,
+            oldSnippet: lines.slice(prevAssignmentIdx, execTarget.lineIdx + 1).join('\n'),
+            newSnippet: [prevFixed, ...lines.slice(prevAssignmentIdx + 1, execTarget.lineIdx), execFixed].join('\n'),
+            explanation: 'Removed dynamic exec call and prefixed unused parameter with _',
+          };
+        }
+
         return {
-          startLine: prevAssignmentIdx + 1,
+          startLine: execTarget.lineIdx + 1,
           endLine: execTarget.lineIdx + 1,
-          oldSnippet: lines.slice(prevAssignmentIdx, execTarget.lineIdx + 1).join('\n'),
-          newSnippet: [prevFixed, ...lines.slice(prevAssignmentIdx + 1, execTarget.lineIdx), execFixed].join('\n'),
-          explanation: 'Removed dynamic exec call and prefixed unused parameter with _',
+          oldSnippet: execTarget.line,
+          newSnippet: execFixed,
+          explanation: 'Removed dynamic exec call to prevent arbitrary code execution',
         };
       }
+    }
 
-      return {
-        startLine: execTarget.lineIdx + 1,
-        endLine: execTarget.lineIdx + 1,
-        oldSnippet: execTarget.line,
-        newSnippet: execFixed,
-        explanation: 'Removed dynamic exec call to prevent arbitrary code execution',
-      };
+    // Check evalTarget if eval finding or general code injection
+    if (isEval || !isExec) {
+      const evalTarget = getTargetLine(lines, lineIdx, (l) => isCodeLine(l, true) && /\beval\s*\(/.test(l));
+      if (evalTarget) {
+        return {
+          startLine: evalTarget.lineIdx + 1,
+          endLine: evalTarget.lineIdx + 1,
+          oldSnippet: evalTarget.line,
+          newSnippet: evalTarget.line.replace(/\beval\s*\(([^)]+)\)/, 'ast.literal_eval($1)'),
+          explanation: 'Replaced unsafe eval() with ast.literal_eval() for safe data parsing',
+        };
+      }
+    }
+
+    // Fallback: check exec if not already checked
+    if (!isExec) {
+      const execTarget = getTargetLine(lines, lineIdx, (l) => isCodeLine(l, true) && /\bexec\s*\(/.test(l));
+      if (execTarget) {
+        const indentMatch = execTarget.line.match(/^(\s*)/);
+        const indent = indentMatch ? indentMatch[1] : '';
+
+        let prevAssignmentIdx = -1;
+        for (let j = Math.max(0, execTarget.lineIdx - 5); j < execTarget.lineIdx; j++) {
+          if (/^\s*[a-zA-Z_]\w*\s*=\s*request\./.test(lines[j])) {
+            prevAssignmentIdx = j;
+            break;
+          }
+        }
+
+        const execFixed = `${indent}# Dynamic execution disabled by CodeSentry\n${indent}raise NotImplementedError("Dynamic execution disabled")`;
+
+        if (prevAssignmentIdx >= 0) {
+          const prevLine = lines[prevAssignmentIdx];
+          const prevVar = prevLine.match(/^\s*([a-zA-Z_]\w*)\s*=/)[1];
+          const prevFixed = prevLine.replace(new RegExp(`\\b${prevVar}\\b`), `_${prevVar}`);
+          return {
+            startLine: prevAssignmentIdx + 1,
+            endLine: execTarget.lineIdx + 1,
+            oldSnippet: lines.slice(prevAssignmentIdx, execTarget.lineIdx + 1).join('\n'),
+            newSnippet: [prevFixed, ...lines.slice(prevAssignmentIdx + 1, execTarget.lineIdx), execFixed].join('\n'),
+            explanation: 'Removed dynamic exec call and prefixed unused parameter with _',
+          };
+        }
+
+        return {
+          startLine: execTarget.lineIdx + 1,
+          endLine: execTarget.lineIdx + 1,
+          oldSnippet: execTarget.line,
+          newSnippet: execFixed,
+          explanation: 'Removed dynamic exec call to prevent arbitrary code execution',
+        };
+      }
     }
   }
 
