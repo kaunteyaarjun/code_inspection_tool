@@ -149,62 +149,124 @@ class AgentRouterClient {
   }
 
   async repairFileBatch(options = {}) {
-    const { filePath, originalContent, findings, preferredModel, onModelSwitch } = options;
+    const file = options.file || options.filePath || '';
+    const fileContent = options.fileContent || options.originalContent || '';
+    const findings = options.findings || [];
+    const preferredModel = options.preferredModel;
+    const onModelSwitch = options.onModelSwitch;
+
     const modelsToTry = [preferredModel || this.model, ...AGENTROUTER_FALLBACK_CHAIN].filter(
       (m, idx, arr) => arr.indexOf(m) === idx
     );
+
+    const issuesSummary = findings.map((f, i) =>
+      `${i + 1}. Line ${f.line || 1} [${f.rule || f.category}]: ${f.message}${f.suggestedFix ? ` -> Recommended: ${f.suggestedFix}` : ''}`
+    ).join('\n');
+
+    const prompt = [
+      `File: ${file}`,
+      'The static analysis engine found the following issues in this file:',
+      issuesSummary,
+      '',
+      'Source code of the file:',
+      '\`\`\`',
+      fileContent,
+      '\`\`\`',
+      '',
+      'Please resolve ALL of the above issues in this file simultaneously.',
+      'Respond with ONLY a JSON object in this format:',
+      '{"fixes": [{"explanation": "...", "oldSnippet": "exact code substring to replace", "newSnippet": "replacement code"}]}',
+    ].join('\n');
+
+    const messages = [
+      { role: 'system', content: 'You are CodeSentry automated code repair engine. Respond with valid JSON only.' },
+      { role: 'user',   content: prompt },
+    ];
 
     let lastError = null;
     for (let i = 0; i < modelsToTry.length; i++) {
       const activeModel = modelsToTry[i];
       try {
-        const issuesSummary = (findings || []).map((f, idx) =>
-          `${idx + 1}. [${f.severity || 'MEDIUM'}] Rule ${f.rule} at line ${f.line}: ${f.message}`
-        ).join('\n');
-
-        const systemPrompt = `You are CodeSentry's expert automated code repair engine.
-Repair all security vulnerabilities and code quality issues listed in the file.
-Return ONLY the raw updated file content. Do NOT include markdown code fences, backticks, or preamble.`;
-
-        const userPrompt = `Target File: ${filePath}
-
-Identified Issues:
-${issuesSummary}
-
-Original File Content:
-${originalContent}`;
-
         const res = await this.chatCompletion({
           model: activeModel,
-          messages: [
-            { role: 'system', content: systemPrompt },
-            { role: 'user', content: userPrompt },
-          ],
+          messages,
           timeout: 8000,
         });
 
-        let repaired = res.content || '';
-        repaired = repaired.replace(/^```[a-zA-Z]*\n?/, '').replace(/\n?```\s*$/, '');
-        if (repaired.length > 10) {
+        const fixes = this._parseBatchRepairResponse(res.content, fileContent);
+        if (fixes && fixes.length > 0) {
           return {
-            repairedContent: repaired,
+            fixes,
             modelUsed: activeModel,
             switchedFrom: i > 0 ? modelsToTry[0] : null,
           };
         }
       } catch (err) {
         lastError = err;
+        const isQuota = /free-models-per-day|rate limit|quota|credit|balance|insufficient|429|402/i.test(err.message || '');
+        if (isQuota) {
+          // Account-level quota / rate limit reached: all models on this tier will fail. Stop immediately.
+          break;
+        }
         if (onModelSwitch && i + 1 < modelsToTry.length) {
           onModelSwitch({
             failedModel: activeModel,
             nextModel: modelsToTry[i + 1],
             error: err.message,
+            isTokenExpire: false,
           });
         }
       }
     }
 
-    throw lastError || new Error('AgentRouter repair failed across all fallback models');
+    return {
+      fixes: [],
+      error: lastError?.message || 'AgentRouter repair unavailable; using offline deterministic rules',
+    };
+  }
+
+  _parseBatchRepairResponse(content, fileContent) {
+    try {
+      if (!content) return null;
+      let cleaned = content.trim();
+      cleaned = cleaned.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
+      cleaned = cleaned.replace(/^\`\`\`(?:json)?\s*/i, '').replace(/\s*\`\`\`$/i, '');
+      const jsonMatch = cleaned.match(/\{[\s\S]*\}|\[[\s\S]*\]/);
+      if (!jsonMatch) return null;
+
+      const parsed = JSON.parse(jsonMatch[0]);
+      const list = Array.isArray(parsed) ? parsed : (parsed.fixes || [parsed]);
+      const validFixes = [];
+      const normalizedFileContent = (fileContent || '').replace(/\r\n/g, '\n');
+
+      for (const item of list) {
+        if (item && item.oldSnippet && item.newSnippet) {
+          let old = item.oldSnippet;
+          const normalizedOld = old.replace(/\r\n/g, '\n');
+
+          if (fileContent && !fileContent.includes(old)) {
+            if (normalizedFileContent.includes(normalizedOld)) {
+              old = normalizedOld;
+            } else {
+              const trimmed = old.trim();
+              if (fileContent.includes(trimmed) || normalizedFileContent.includes(trimmed)) {
+                old = trimmed;
+              } else {
+                continue;
+              }
+            }
+          }
+          validFixes.push({
+            oldSnippet: old,
+            newSnippet: item.newSnippet,
+            explanation: item.explanation || 'Applied AI batch code repair',
+          });
+        }
+      }
+      return validFixes.length > 0 ? validFixes : null;
+    } catch {
+      return null;
+    }
   }
 }
 

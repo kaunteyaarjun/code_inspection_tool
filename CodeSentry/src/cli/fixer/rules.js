@@ -461,6 +461,18 @@ function generateRuleFix(finding, fileContent) {
       };
     }
 
+    // Case 1c: trailing stray tokens on a def/class line (e.g. def foo(...):junk or class Foo:junk)
+    const defClassMatch = rawNoCr.match(/^(\s*(?:def\s+[a-zA-Z_]\w*\s*\([^)]*\)|class\s+[a-zA-Z_]\w*(?:\([^)]*\))?)\s*:)\s*(.+)$/);
+    if (defClassMatch) {
+      return {
+        startLine: finding.line,
+        endLine: finding.line,
+        oldSnippet: originalLine,
+        newSnippet: defClassMatch[1] + (hasCr ? '\r' : ''),
+        explanation: `Removed extraneous syntax tokens after colon (${defClassMatch[2].trim()})`,
+      };
+    }
+
     // Case 2: stray random words on their own line (e.g. 'reh seh', 'thfy jrtjr', 'dthetjej')
     const trimmed = rawNoCr.trim();
     const isStrayWords = /^[a-zA-Z_]\w*(?:\s+[a-zA-Z_]\w*)*$/.test(trimmed) &&

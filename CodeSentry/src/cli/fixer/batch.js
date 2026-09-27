@@ -305,36 +305,49 @@ async function batchFixFile(projectPath, filePath, fileFindings, options = {}) {
     content = postProcessPythonFile(content);
   }
 
-  if (applied.length > 0) {
-    // Iterative syntax healer: if remaining syntax errors exist in the file, heal them!
-    for (let healPass = 0; healPass < 10; healPass++) {
-      const syntaxCheck = validateSyntax(filePath, content);
-      if (syntaxCheck.valid) break;
+  // Iterative syntax healer: run unconditionally if syntax errors exist
+  for (let healPass = 0; healPass < 10; healPass++) {
+    const syntaxCheck = validateSyntax(filePath, content);
+    if (syntaxCheck.valid) break;
 
-      if (syntaxCheck.line && typeof syntaxCheck.line === 'number') {
-        const dummyFinding = {
-          rule: 'invalid-syntax',
-          line: syntaxCheck.line,
-          file: filePath,
-          message: syntaxCheck.error,
-        };
-        const healFix = generateRuleFix(dummyFinding, content);
-        if (healFix && healFix.oldSnippet && typeof healFix.newSnippet === 'string') {
-          const healed = applySnippetToContent(content, healFix.oldSnippet, healFix.newSnippet, syntaxCheck.line);
-          if (healed !== null && healed !== content) {
-            content = healed;
-            applied.push({
-              finding: dummyFinding,
-              fix: healFix,
-              method: 'deterministic',
-            });
-            continue;
-          }
+    if (syntaxCheck.line && typeof syntaxCheck.line === 'number') {
+      const dummyFinding = {
+        rule: 'invalid-syntax',
+        line: syntaxCheck.line,
+        file: filePath,
+        message: syntaxCheck.error,
+      };
+      const healFix = generateRuleFix(dummyFinding, content);
+      if (healFix && healFix.oldSnippet && typeof healFix.newSnippet === 'string') {
+        const healed = applySnippetToContent(content, healFix.oldSnippet, healFix.newSnippet, syntaxCheck.line);
+        if (healed !== null && healed !== content) {
+          content = healed;
+          applied.push({
+            finding: dummyFinding,
+            fix: healFix,
+            method: 'deterministic',
+          });
+          continue;
         }
       }
-      break;
     }
+    break;
+  }
 
+  let originalFileContent = '';
+  try {
+    originalFileContent = fs.readFileSync(fullPath, 'utf8');
+  } catch {}
+
+  if (applied.length === 0 && content !== originalFileContent) {
+    applied.push({
+      finding: fileFindings[0] || { file: filePath, message: 'Automated syntax & structure healing' },
+      fix: { explanation: 'Applied automated syntax healing and structure normalization' },
+      method: 'deterministic',
+    });
+  }
+
+  if (applied.length > 0) {
     const finalSyntaxCheck = validateSyntax(filePath, content);
     if (!finalSyntaxCheck.valid) {
       return {
@@ -345,11 +358,6 @@ async function batchFixFile(projectPath, filePath, fileFindings, options = {}) {
         totalIssues: fileFindings.length,
       };
     }
-
-    let originalFileContent = '';
-    try {
-      originalFileContent = fs.readFileSync(fullPath, 'utf8');
-    } catch {}
 
     const sandboxResult = executeWithAutoSandbox({
       projectPath,

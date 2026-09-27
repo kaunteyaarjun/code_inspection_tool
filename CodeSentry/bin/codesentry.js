@@ -224,6 +224,9 @@ async function main() {
       }
     }
 
+    let fixIterations = 0;
+    const MAX_FIX_ITERATIONS = 3;
+
     while (true) {
       const progress = createProgressTracker({
         verbose,
@@ -456,13 +459,17 @@ async function main() {
           label: `Fix Summary: ${theme.colors.green(appliedCount + ' applied')}${skippedCount > 0 ? `, ${theme.colors.yellow(skippedCount + ' skipped')}` : ''}${failedCount > 0 ? `, ${theme.colors.red(failedCount + ' failed')}` : ''}`,
         }));
 
-        parsed.options.fix = false;
-        parsed.options.yes = false;
-
-        if (appliedCount > 0) {
-          output.print(theme.colors.gray('\nRe-scanning codebase to verify fixes...\n'));
+        fixIterations++;
+        if (appliedCount > 0 && fixIterations < MAX_FIX_ITERATIONS) {
+          parsed.options.fix = true;
+          parsed.options.yes = true;
+          output.print(theme.colors.gray(`\nRe-scanning codebase to verify and apply follow-up fixes (pass ${fixIterations + 1}/${MAX_FIX_ITERATIONS})...\n`));
           continue;
         }
+
+        parsed.options.fix = false;
+        parsed.options.yes = false;
+        fixIterations = 0;
       }
 
       // Non-interactive or JSON mode exits immediately (e.g. CI/CD or automation)
@@ -644,7 +651,11 @@ async function main() {
           // CodeSentry: eviction guard helper
           function pruneFindingsByFile() { while (findingsByFile.size > MAX_FINDINGSBYFILE_SIZE) findingsByFile.delete(findingsByFile.keys().next().value); }
           for (const f of targetPool) {
-            const fileKey = f.file || 'unknown';
+            let fileKey = f.file || 'unknown';
+            if (path.isAbsolute(fileKey)) {
+              fileKey = path.relative(parsed.projectPath, fileKey) || path.basename(fileKey);
+            }
+            fileKey = fileKey.replace(/^[.\/\\]+/, '').replace(/\\/g, '/');
             if (!findingsByFile.has(fileKey)) {
               findingsByFile.set(fileKey, []);
             }
@@ -713,7 +724,9 @@ async function main() {
             label: `Fix Summary: ${theme.colors.green(appliedCount + ' applied')}${skippedCount > 0 ? `, ${theme.colors.yellow(skippedCount + ' skipped')}` : ''}${failedCount > 0 ? `, ${theme.colors.red(failedCount + ' failed')}` : ''}`,
           }));
           if (appliedCount > 0) {
-            output.print(theme.colors.gray('\nRe-scanning to verify fixes...\n'));
+            output.print(theme.colors.gray('\nRe-scanning to verify and complete fixes...\n'));
+            parsed.options.fix = true;
+            parsed.options.yes = true;
           } else {
             output.print(theme.colors.gray('\nNo files were modified.\n'));
           }
