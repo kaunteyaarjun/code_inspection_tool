@@ -104,8 +104,50 @@ function sortPythonImportsInContent(content) {
 /**
  * Ensures all necessary imports and module definitions are in place for Python files.
  */
+const PYTHON_KEYWORDS = new Set([
+  'import', 'from', 'global', 'nonlocal', 'return', 'del', 'raise',
+  'assert', 'yield', 'if', 'elif', 'else', 'while', 'for', 'with', 'class',
+  'def', 'pass', 'break', 'continue', 'try', 'except', 'finally',
+  'async', 'await', 'lambda', 'and', 'or', 'not', 'is', 'in'
+]);
+
+function isGibberishPythonLine(line) {
+  const trimmed = (line || '').trim();
+  if (!trimmed || trimmed.startsWith('#')) return false;
+  if (/^[a-zA-Z_]\w*(?:\s+[a-zA-Z_]\w*)+$/.test(trimmed)) {
+    const firstWord = trimmed.split(/\s+/)[0];
+    if (!PYTHON_KEYWORDS.has(firstWord)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function stripTrailingDefJunk(line) {
+  const defMatch = (line || '').match(/^(\s*def\s+[a-zA-Z_]\w*\s*\([^)]*\)\s*:)\s*(.+)$/);
+  if (defMatch) {
+    const trailing = defMatch[2].trim();
+    if (isGibberishPythonLine(trailing) || /^[a-zA-Z_]\w*(?:\s+[a-zA-Z_]\w*)+$/.test(trailing)) {
+      return defMatch[1];
+    }
+  }
+  return line;
+}
+
 function postProcessPythonFile(content) {
   let updated = content;
+  // Clean literal gibberish lines and trailing header junk
+  updated = updated.replace(/^\s*(?:from\s+\S+\s+import\s+[^#\n]*_BufferCallback[^#\n]*|import\s+[^#\n]*_BufferCallback[^#\n]*)\n?/gm, '');
+  const rawLines = updated.split('\n');
+  const cleanedRaw = [];
+  for (let i = 0; i < rawLines.length; i++) {
+    const line = stripTrailingDefJunk(rawLines[i]);
+    if (!isGibberishPythonLine(line)) {
+      cleanedRaw.push(line);
+    }
+  }
+  updated = cleanedRaw.join('\n');
+
 
   // 1. Ensure import os
   if ((/\bos\.environ\b/.test(updated) || /\bos\.path\b/.test(updated)) && !/^import\s+os\b/m.test(updated) && !/^from\s+os\s+import/m.test(updated)) {
@@ -1326,6 +1368,85 @@ function generateRuleFix(finding, fileContent) {
     'contextlib', 'dataclasses', 'typing', 'copy', 'enum', 'uuid',
     'glob', 'pickle', 'struct', 'sqlite3', 'argparse', 'textwrap',
   ]);
+
+  
+  // ── DeployGuard: Missing HTTP Security Headers ─────────────────────────────
+  if (
+    finding.rule === 'deployguard-missing-security-headers' ||
+    (finding.message && finding.message.includes('security headers middleware'))
+  ) {
+    if (isPy) {
+      for (let i = 0; i < lines.length; i++) {
+        if (/app\s*=\s*Flask\s*\(/.test(lines[i])) {
+          const targetLine = lines[i];
+          const middlewareSnippet = [
+            targetLine,
+            '',
+            '# Security headers middleware (Talisman / security headers)',
+            '@app.after_request',
+            'def _set_security_headers(response):',
+            "    response.headers['X-Content-Type-Options'] = 'nosniff'",
+            "    response.headers['X-Frame-Options'] = 'DENY'",
+            "    response.headers['Content-Security-Policy'] = \"default-src 'self'\"",
+            '    return response',
+          ].join('\n');
+          return {
+            startLine: i + 1,
+            endLine: i + 1,
+            oldSnippet: targetLine,
+            newSnippet: middlewareSnippet,
+            explanation: 'Mounted security headers middleware (@app.after_request with X-Frame-Options, CSP, nosniff)',
+          };
+        }
+      }
+    } else {
+      for (let i = 0; i < lines.length; i++) {
+        if (/(?:const|let|var)\s+app\s*=\s*express\s*\(/.test(lines[i])) {
+          const targetLine = lines[i];
+          const middlewareSnippet = [
+            "const helmet = require('helmet');",
+            targetLine,
+            'app.use(helmet());',
+          ].join('\n');
+          return {
+            startLine: i + 1,
+            endLine: i + 1,
+            oldSnippet: targetLine,
+            newSnippet: middlewareSnippet,
+            explanation: 'Installed Helmet security middleware on Express application',
+          };
+        }
+      }
+    }
+  }
+
+  // ── SyntaxError / E999 / Gibberish Cleanup ──────────────────────────────────
+  if (
+    finding.rule === 'E999' ||
+    finding.rule === 'syntax-error' ||
+    (finding.message && (finding.message.includes('SyntaxError') || finding.message.includes('invalid syntax') || finding.message.includes('unindent does not match')))
+  ) {
+    if (isPy) {
+      if (stripTrailingDefJunk(originalLine) !== originalLine) {
+        return {
+          startLine: finding.line,
+          endLine: finding.line,
+          oldSnippet: originalLine,
+          newSnippet: stripTrailingDefJunk(originalLine),
+          explanation: 'Removed stray gibberish after function definition header',
+        };
+      }
+      if (isGibberishPythonLine(originalLine)) {
+        return {
+          startLine: finding.line,
+          endLine: finding.line,
+          oldSnippet: originalLine,
+          newSnippet: '',
+          explanation: 'Removed syntactically invalid gibberish line',
+        };
+      }
+    }
+  }
 
   if (
     finding.rule === 'F821' ||
