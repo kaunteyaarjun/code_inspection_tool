@@ -178,6 +178,9 @@ class OpenAIClient {
         };
       } catch (err) {
         lastError = err;
+        if (/credit_balance_exhausted|insufficient_quota|quota|billing/i.test(err.message || '')) {
+          break; // Stop immediately: account credit balance is exhausted
+        }
       }
     }
 
@@ -230,12 +233,17 @@ ${originalContent}`;
         }
       } catch (err) {
         lastError = err;
+        const isQuota = /credit_balance_exhausted|insufficient_quota|quota|billing/i.test(err.message || '');
         if (onModelSwitch && i + 1 < modelsToTry.length) {
           onModelSwitch({
             failedModel: activeModel,
             nextModel: modelsToTry[i + 1],
             error: err.message,
+            isTokenExpire: isQuota,
           });
+        }
+        if (isQuota) {
+          break; // Stop immediately if account has zero credits
         }
       }
     }

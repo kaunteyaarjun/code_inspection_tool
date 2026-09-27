@@ -1366,7 +1366,7 @@ function generateRuleFix(finding, fileContent) {
     'itertools', 'pathlib', 'shutil', 'tempfile', 'csv', 'logging',
     'threading', 'socket', 'http', 'urllib', 'shlex', 'traceback',
     'contextlib', 'dataclasses', 'typing', 'copy', 'enum', 'uuid',
-    'glob', 'pickle', 'struct', 'sqlite3', 'argparse', 'textwrap',
+    'glob', 'struct', 'sqlite3', 'argparse', 'textwrap',
   ]);
 
   
@@ -1420,6 +1420,53 @@ function generateRuleFix(finding, fileContent) {
     }
   }
 
+  // ── SQL Injection (Bandit B608 / Semgrep sql-injection) ──────────────────────
+  if (
+    finding.rule === 'B608' ||
+    (finding.rule && String(finding.rule).toLowerCase().includes('sql-injection')) ||
+    (finding.message && finding.message.includes('SQL injection'))
+  ) {
+    if (isPy) {
+      for (let i = Math.max(0, lineIdx - 3); i <= Math.min(lines.length - 1, lineIdx + 3); i++) {
+        const l = lines[i];
+        const fmatch = l.match(/(query|sql|stmt)\s*=\s*f["'](SELECT|INSERT|UPDATE|DELETE)\s+([^"']+)["']/i);
+        if (fmatch) {
+          const varName = fmatch[1];
+          const fullSql = fmatch[0];
+          const paramMatches = [...fullSql.matchAll(/\{([a-zA-Z_]\w*)\}/g)].map(m => m[1]);
+          if (paramMatches.length > 0) {
+            const parameterizedSql = fullSql
+              .replace(/f(["'])/, '$1')
+              .replace(/['"]?\{[a-zA-Z_]\w*\}['"]?/g, '%s');
+
+            let nextLineIdx = i + 1;
+            let hasExec = nextLineIdx < lines.length && lines[nextLineIdx].includes(varName) && lines[nextLineIdx].includes('.execute(');
+            if (hasExec) {
+              const execLine = lines[nextLineIdx];
+              const paramTuple = paramMatches.length === 1 ? '(' + paramMatches[0] + ',)' : '(' + paramMatches.join(', ') + ')';
+              const newExecLine = execLine.replace(new RegExp('\\.execute\\(\\s*' + varName + '\\s*\\)'), '.execute(' + varName + ', ' + paramTuple + ')');
+              return {
+                startLine: i + 1,
+                endLine: nextLineIdx + 1,
+                oldSnippet: l + '\n' + execLine,
+                newSnippet: parameterizedSql + '\n' + newExecLine,
+                explanation: 'Converted vulnerable SQL string interpolation to parameterized query with parameter tuple',
+              };
+            } else {
+              return {
+                startLine: i + 1,
+                endLine: i + 1,
+                oldSnippet: l,
+                newSnippet: parameterizedSql,
+                explanation: 'Parameterized SQL query placeholder to prevent SQL injection',
+              };
+            }
+          }
+        }
+      }
+    }
+  }
+
   // ── SyntaxError / E999 / Gibberish Cleanup ──────────────────────────────────
   if (
     finding.rule === 'E999' ||
@@ -1456,6 +1503,23 @@ function generateRuleFix(finding, fileContent) {
     const varMatch = finding.message.match(/[`'"]([a-zA-Z_]\w*)[`'"]/);
     if (varMatch) {
       const name = varMatch[1];
+
+      // Insecure pickle special-case: never import pickle! Replace with json
+      if (name === 'pickle' && isPy) {
+        for (let i = 0; i < lines.length; i++) {
+          if (/pickle\.loads?\s*\(/.test(lines[i])) {
+            const oldLine = lines[i];
+            const newLine = oldLine.replace(/pickle\.loads?\s*\(/g, 'json.loads(');
+            return {
+              startLine: i + 1,
+              endLine: i + 1,
+              oldSnippet: oldLine,
+              newSnippet: newLine,
+              explanation: 'Replaced insecure pickle deserialization with json.loads()',
+            };
+          }
+        }
+      }
 
       // Case 1: Known stdlib module — add import right after the last import line
       if (KNOWN_STDLIB.has(name) && isPy) {

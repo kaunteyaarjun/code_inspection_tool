@@ -100,6 +100,18 @@ async function scan(projectPath, overrides = {}) {
     }
   }
 
+  // Canonicalize finding file paths relative to project root with forward slashes
+  for (const f of allFindings) {
+    if (f && f.file) {
+      let normPath = f.file;
+      if (path.isAbsolute(normPath)) {
+        normPath = path.relative(config.projectPath, normPath) || path.basename(normPath);
+      }
+      normPath = normPath.replace(/^[.\/\\]+/, '').replace(/\\/g, '/');
+      f.file = normPath;
+    }
+  }
+
   const dedupedFindings = deduplicate(allFindings);
 
   let filteredFindings = dedupedFindings;
@@ -219,6 +231,9 @@ async function analyzeWithAI(findings, discoveryResult, config, repoMap = null, 
       });
     } catch (err) {
       analyzedFindings.push(finding);
+      if (/credit_balance_exhausted|insufficient_quota|quota|billing|429/i.test(err.message || '')) {
+        break; // Fast failover: do not repeat failing API requests if account has 0 credits
+      }
     }
   }
 

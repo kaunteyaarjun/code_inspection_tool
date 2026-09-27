@@ -199,7 +199,7 @@ async function main() {
     const formatter = createFormatter();
 
     // Mutable state for the interactive loop
-    let currentProvider = (process.env.CODESENTRY_AI_PROVIDER || (process.env.OPENAI_API_KEY && !process.env.OPENROUTER_API_KEY ? 'openai' : 'openrouter')).toLowerCase();
+    let currentProvider = (parsed.options.aiProvider || process.env.CODESENTRY_AI_PROVIDER || (process.env.OPENAI_API_KEY && !process.env.OPENROUTER_API_KEY ? 'openai' : 'openrouter')).toLowerCase();
     let currentModel = parsed.options.aiModel || (currentProvider === 'openai' ? (process.env.OPENAI_MODEL || 'gpt-4o-mini') : (process.env.OPENROUTER_MODEL || 'auto'));
     let currentNoAi = Boolean(parsed.options.noAi || currentModel === 'none');
     let isFirstRun = true;
@@ -385,7 +385,11 @@ async function main() {
 
         const findingsByFile = new Map();
         for (const f of result.findings) {
-          const fileKey = f.file || 'unknown';
+          let fileKey = f.file || 'unknown';
+          if (path.isAbsolute(fileKey)) {
+            fileKey = path.relative(parsed.projectPath, fileKey) || path.basename(fileKey);
+          }
+          fileKey = fileKey.replace(/^[.\/\\]+/, '').replace(/\\/g, '/');
           if (!findingsByFile.has(fileKey)) {
             findingsByFile.set(fileKey, []);
           }
@@ -405,7 +409,9 @@ async function main() {
             preferredModel: currentModel,
             onModelSwitch: ({ failedModel, nextModel, error, isTokenExpire }) => {
               let reason = 'Model error';
-              if (/free-models-per-day/i.test(error || '')) {
+              if (/credit_balance_exhausted|insufficient_quota/i.test(error || '')) {
+                reason = 'OpenAI account credit balance exhausted (0 credits)';
+              } else if (/free-models-per-day/i.test(error || '')) {
                 reason = 'Free daily account limit reached on OpenRouter';
               } else if (/use this slug instead/i.test(error || '')) {
                 reason = 'Free slug retired by OpenRouter, using standard model';
