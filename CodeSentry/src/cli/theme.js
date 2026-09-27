@@ -153,10 +153,17 @@ function renderLogo() {
   const line4 =
     s('  ▀▀   ▀▀   ▀▀   ▀▀   ▀▀   ▀▀  ▀▀  ▀▀  ▀▀   ▀▀');
 
+  let pkgVersion = '0.2.0';
+  try {
+    pkgVersion = require('../../package.json').version || '0.2.0';
+  } catch {
+    try { pkgVersion = require('../../../package.json').version; } catch {}
+  }
+
   const subtitle =
     g('DevSecOps & AI Code Inspection Engine') +
     s('  ·  ') +
-    c('v0.1.0');
+    c(`v${pkgVersion}`);
 
   const logoLines = ['', line1, line2, line3, line4, '', subtitle, ''];
   return logoLines.map(line => {
