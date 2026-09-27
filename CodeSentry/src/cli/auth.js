@@ -43,6 +43,9 @@ function readGlobalConfig(customPath = null) {
     if (!fs.existsSync(filePath)) {
       return {};
     }
+    try {
+      fs.chmodSync(filePath, 0o600);
+    } catch {}
     const content = fs.readFileSync(filePath, 'utf8');
     const parsed = JSON.parse(content);
     return parsed && typeof parsed === 'object' ? parsed : {};
@@ -53,7 +56,8 @@ function readGlobalConfig(customPath = null) {
 
 /**
   * Merges updates into the global config JSON file and writes it to disk.
-  * Creates the ~/.codesentry directory if it doesn't exist.
+  * Creates the ~/.codesentry directory if it doesn't exist with 0o700 permissions
+  * and writes config.json with 0o600 (owner read/write only).
   */
 function saveGlobalConfig(updates = {}, customPath = null) {
   const filePath = customPath || getGlobalConfigPath();
@@ -61,7 +65,7 @@ function saveGlobalConfig(updates = {}, customPath = null) {
 
   try {
     if (!fs.existsSync(dirPath)) {
-      fs.mkdirSync(dirPath, { recursive: true });
+      fs.mkdirSync(dirPath, { recursive: true, mode: 0o700 });
     }
 
     const existing = readGlobalConfig(filePath);
@@ -75,7 +79,12 @@ function saveGlobalConfig(updates = {}, customPath = null) {
       merged.created_at = new Date().toISOString();
     }
 
-    fs.writeFileSync(filePath, JSON.stringify(merged, null, 2), 'utf8');
+    // Write file with user-only permissions (0o600) and enforce chmod
+    fs.writeFileSync(filePath, JSON.stringify(merged, null, 2), { encoding: 'utf8', mode: 0o600 });
+    try {
+      fs.chmodSync(filePath, 0o600);
+    } catch {}
+
     return merged;
   } catch (err) {
     return null;

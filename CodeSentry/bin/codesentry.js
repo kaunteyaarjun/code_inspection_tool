@@ -137,10 +137,10 @@ async function main() {
     process.exit(0);
   }
 
-  // ── Standalone 'demo' command (Hackathon Showcase) ─────────────────────────
+  // ── Standalone 'demo' command (Interactive Live Showcase) ──────────────────
   if (parsed.command === COMMANDS.DEMO) {
-    const { runHackathonDemo } = require(path.join(packageRoot, 'src', 'cli', 'demo'));
-    await runHackathonDemo();
+    const { runLiveDemo } = require(path.join(packageRoot, 'src', 'cli', 'demo'));
+    await runLiveDemo();
     process.exit(0);
   }
 
