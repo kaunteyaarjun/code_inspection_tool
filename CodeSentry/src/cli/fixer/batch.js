@@ -159,42 +159,45 @@ async function batchFixFile(projectPath, filePath, fileFindings, options = {}) {
 
   // ── Phase 1: Local Deterministic Rule Fixes (Instant, Zero Network Latency) ──
   for (const finding of sortedFindings) {
-    // Check if finding on this line was already resolved by an earlier compound fix
+    // Re-compute current lines after each modification
     const currentLines = content.split('\n');
-    const curLine = currentLines[(finding.line || 1) - 1] || '';
 
-    // --- Compound dedup: if the problematic pattern no longer exists on this line, mark as resolved ---
+    // Helper: search the ENTIRE content for a pattern, not just the original line number
+    // (line numbers drift after insertions/deletions by earlier fixes)
+    const contentHas = (pattern) => pattern.test(content);
+
+    // --- Compound dedup: mark as resolved ONLY if the problematic pattern is truly gone from the ENTIRE file ---
     // Flask debug=True
-    if ((finding.rule === 'B201' || (finding.message && finding.message.includes('debug=True'))) && !curLine.includes('debug=True')) {
+    if ((finding.rule === 'B201' || (finding.message && finding.message.includes('debug=True'))) && !contentHas(/debug\s*=\s*True/)) {
       applied.push({ finding, fix: { explanation: 'Disabled Flask debug mode in production (debug=False)' }, method: 'deterministic' });
       continue;
     }
     // Flask host 0.0.0.0
-    if ((finding.rule === 'B104' || (finding.message && finding.message.includes('0.0.0.0'))) && !curLine.includes('0.0.0.0')) {
+    if ((finding.rule === 'B104' || (finding.message && finding.message.includes('0.0.0.0'))) && !contentHas(/host\s*=\s*['"]0\.0\.0\.0['"]/)) {
       applied.push({ finding, fix: { explanation: 'Restricted Flask server binding to localhost (127.0.0.1)' }, method: 'deterministic' });
       continue;
     }
-    // exec() already removed from this line
-    if ((finding.rule === 'B102' || finding.rule === 'S102' || (finding.rule && finding.rule.includes('user-exec')) || (finding.message && /\bexec\s*\(/.test(finding.message))) && !/\bexec\s*\(/.test(curLine) && isCodeLine(curLine, isPy)) {
+    // exec() already removed from the file
+    if ((finding.rule === 'B102' || finding.rule === 'S102' || (finding.rule && finding.rule.includes('user-exec')) || (finding.message && /\bexec\s*\(/.test(finding.message))) && !contentHas(/\bexec\s*\(/)) {
       applied.push({ finding, fix: { explanation: 'Dynamic exec call already removed for security' }, method: 'deterministic' });
       continue;
     }
-    // eval() already replaced on this line
-    if ((finding.rule === 'B307' || finding.rule === 'S307' || (finding.rule && finding.rule.includes('user-eval')) || (finding.message && /\beval\s*\(/.test(finding.message))) && !/\beval\s*\(/.test(curLine) && isCodeLine(curLine, isPy)) {
+    // eval() already replaced in the file
+    if ((finding.rule === 'B307' || finding.rule === 'S307' || (finding.rule && finding.rule.includes('user-eval')) || (finding.message && /\beval\s*\(/.test(finding.message))) && !contentHas(/\beval\s*\(/)) {
       applied.push({ finding, fix: { explanation: 'Unsafe eval already replaced with ast.literal_eval()' }, method: 'deterministic' });
       continue;
     }
-    // SQL injection already parameterized on this line (no more f-string or format)
-    if ((finding.rule === 'B608' || finding.rule === 'S608' || (finding.rule && (finding.rule.includes('tainted-sql') || finding.rule.includes('formatted-sql') || finding.rule.includes('sql-injection')))) && !/f["']/.test(curLine) && !/\.format\s*\(/.test(curLine)) {
+    // SQL injection already parameterized (no f-strings or .format() with SQL keywords anywhere in file)
+    if ((finding.rule === 'B608' || finding.rule === 'S608' || (finding.rule && (finding.rule.includes('tainted-sql') || finding.rule.includes('formatted-sql') || finding.rule.includes('sql-injection')))) && !contentHas(/f["'].*(?:SELECT|INSERT|UPDATE|DELETE|FROM|WHERE)/i) && !contentHas(/\.format\s*\(/)) {
       applied.push({ finding, fix: { explanation: 'SQL query already parameterized to prevent injection' }, method: 'deterministic' });
       continue;
     }
-    // pickle already replaced on this line
-    if ((finding.rule === 'B301' || (finding.rule && finding.rule.includes('insecure-deserialization'))) && !/pickle\.loads?\s*\(/.test(curLine)) {
+    // pickle already replaced in the file
+    if ((finding.rule === 'B301' || (finding.rule && finding.rule.includes('insecure-deserialization'))) && !contentHas(/pickle\.loads?\s*\(/)) {
       applied.push({ finding, fix: { explanation: 'Insecure pickle deserialization already replaced with json.loads()' }, method: 'deterministic' });
       continue;
     }
-    // B403 pickle advisory / import already resolved
+    // B403 pickle advisory / import already resolved (including _BufferCallback)
     if ((finding.rule === 'B403') && !/\bpickle\b/.test(content)) {
       applied.push({ finding, fix: { explanation: 'Insecure pickle module replaced with json module' }, method: 'deterministic' });
       continue;
@@ -204,10 +207,23 @@ async function batchFixFile(projectPath, filePath, fileFindings, options = {}) {
       applied.push({ finding, fix: { explanation: 'Subprocess security advisory acknowledged or unused import removed' }, method: 'deterministic' });
       continue;
     }
-    // Hardcoded secret already replaced on this line
-    if ((finding.rule === 'hardcoded-secret' || finding.rule === 'B105' || finding.rule === 'B106') && curLine.includes('os.environ.get(')) {
-      applied.push({ finding, fix: { explanation: 'Hardcoded secret already replaced with os.environ.get()' }, method: 'deterministic' });
+    // py-command-injection already fixed (shell=True removed from file)
+    if ((finding.rule === 'py-command-injection' || finding.rule === 'B602' || finding.rule === 'S602') && !contentHas(/shell\s*=\s*True/)) {
+      applied.push({ finding, fix: { explanation: 'Command injection fixed: shell=True already removed' }, method: 'deterministic' });
       continue;
+    }
+    // deployguard-production-debug already fixed (debug=True removed from file)
+    if ((finding.rule === 'deployguard-production-debug' || (finding.rule && finding.rule.includes('production-debug'))) && !contentHas(/debug\s*=\s*True/)) {
+      applied.push({ finding, fix: { explanation: 'Production debug mode already disabled' }, method: 'deterministic' });
+      continue;
+    }
+    // Hardcoded secret already replaced — check no raw hardcoded secret patterns remain
+    if ((finding.rule === 'hardcoded-secret' || finding.rule === 'B105' || finding.rule === 'B106')) {
+      const secretPattern = /(?:(?:API|SECRET|AUTH|ACCESS|PRIVATE)[_-]?(?:KEY|TOKEN|SECRET)|(?:DB_|DATABASE_)PASSWORD)\s*[:=]\s*['"][^'"]{6,}['"]/i;
+      if (!secretPattern.test(content) || (content.includes('os.environ.get(') && !secretPattern.test(content.replace(/os\.environ\.get\([^)]*\)/g, '')))) {
+        applied.push({ finding, fix: { explanation: 'Hardcoded secret already replaced with os.environ.get()' }, method: 'deterministic' });
+        continue;
+      }
     }
     // Undefined variable already resolved (import added or variable defined)
     if ((finding.rule === 'F821' || finding.rule === 'undefined-variable') && finding.message) {
@@ -226,8 +242,7 @@ async function batchFixFile(projectPath, filePath, fileFindings, options = {}) {
       const unusedMatch = finding.message.match(/[`'"]?([a-zA-Z0-9_.]+)[`'"]?\s+imported but unused/);
       if (unusedMatch) {
         const importName = unusedMatch[1].includes('.') ? unusedMatch[1].split('.').pop() : unusedMatch[1];
-        const trimCur = curLine.trim();
-        if (trimCur.startsWith('#') || trimCur === '' || !curLine.includes(importName)) {
+        if (!content.includes(importName)) {
           applied.push({ finding, fix: { explanation: `Unused import '${unusedMatch[1]}' already removed` }, method: 'deterministic' });
           continue;
         }

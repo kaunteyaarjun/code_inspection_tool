@@ -226,6 +226,8 @@ async function main() {
 
     let fixIterations = 0;
     const MAX_FIX_ITERATIONS = 3;
+    let lastSkippedCount = 0;
+    let lastFailedCount = 0;
 
     while (true) {
       const progress = createProgressTracker({
@@ -296,6 +298,11 @@ async function main() {
           const findingLines = formatter.formatFindings(result.findings, {
             limit: 10,
             showDetails: true,
+            errors: result.metadata ? result.metadata.errors : [],
+            analyzerWarnings: result.metadata ? result.metadata.analyzerWarnings : [],
+            skippedCount: lastSkippedCount,
+            failedCount: lastFailedCount,
+            quotaExceeded: Boolean(result.metadata && (result.metadata.quotaExceeded || (result.metadata.errors && result.metadata.errors.some(e => /quota|credit|rate.limit|balance/i.test(e.message || ''))))),
           });
           for (const line of findingLines) {
             output.print(line);
@@ -454,6 +461,9 @@ async function main() {
           }
         }
 
+        lastSkippedCount = skippedCount;
+        lastFailedCount = failedCount;
+
         output.print('\n' + formatStatusIndicator({
           status: appliedCount > 0 ? 'online' : 'warning',
           label: `Fix Summary: ${theme.colors.green(appliedCount + ' applied')}${skippedCount > 0 ? `, ${theme.colors.yellow(skippedCount + ' skipped')}` : ''}${failedCount > 0 ? `, ${theme.colors.red(failedCount + ' failed')}` : ''}`,
@@ -534,10 +544,14 @@ async function main() {
       const hasFindings = Boolean(result && result.findings && result.findings.length > 0);
       const rightTitle = hasFindings
         ? `${result.findings.length} findings · press Tab for menu`
-        : 'clean baseline · press Tab for menu';
+        : (lastSkippedCount > 0
+            ? `${lastSkippedCount} skipped issues · press Tab for menu`
+            : ((result && result.metadata && result.metadata.errors && result.metadata.errors.length > 0)
+                ? 'scan incomplete (errors) · press Tab for menu'
+                : 'clean baseline · press Tab for menu'));
       const summaryLabel = hasFindings && result.autograd && result.autograd.offlineResolvableCount > 0
         ? `⚡ ${result.autograd.offlineResolvableCount} issues can be auto-resolved offline instantly`
-        : null;
+        : (lastSkippedCount > 0 ? `⚠ ${lastSkippedCount} issue(s) skipped — manual review required` : null);
 
       const action = await promptActionOnTab({
         rightTitle,
@@ -718,6 +732,8 @@ async function main() {
               }
             }
           }
+          lastSkippedCount = skippedCount;
+          lastFailedCount = failedCount;
           output.print('');
           output.print(formatStatusIndicator({
             status: appliedCount > 0 ? 'online' : 'warning',
@@ -1022,6 +1038,8 @@ async function main() {
           output.print(theme.colors.gray('Re-initiating codebase inspection...\n'));
         }
       } else if (action === 'rescan') {
+        lastSkippedCount = 0;
+        lastFailedCount = 0;
         output.print(theme.colors.gray('Re-initiating codebase inspection...\n'));
       } else if (action === 'exit') {
         output.print('\n' + theme.colors.cyan('◆') + ' ' + theme.colors.white('CodeSentry session closed.'));
